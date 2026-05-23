@@ -37,6 +37,12 @@ The API starts at:
 http://localhost:8080
 ```
 
+Open the frontend dashboard in a browser at:
+
+```text
+http://localhost:8080/
+```
+
 H2 console:
 
 ```text

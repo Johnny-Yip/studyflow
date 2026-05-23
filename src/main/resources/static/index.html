@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyFlow Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="app-header">
+        <div>
+            <p class="eyebrow">StudyFlow</p>
+            <h1>Student planning dashboard</h1>
+        </div>
+        <nav class="tabs" aria-label="Dashboard sections">
+            <button class="tab-button active" type="button" data-section="courses">Courses</button>
+            <button class="tab-button" type="button" data-section="tasks">Tasks</button>
+            <button class="tab-button" type="button" data-section="grades">Grades</button>
+        </nav>
+    </header>
+
+    <main>
+        <section class="metrics" aria-label="StudyFlow summary">
+            <article class="metric">
+                <span id="courseCount">0</span>
+                <p>Courses</p>
+            </article>
+            <article class="metric">
+                <span id="openTaskCount">0</span>
+                <p>Open tasks</p>
+            </article>
+            <article class="metric">
+                <span id="completionRate">0%</span>
+                <p>Completion</p>
+            </article>
+        </section>
+
+        <p id="message" class="message" role="status" aria-live="polite"></p>
+
+        <section id="courses" class="dashboard-section active">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Courses</p>
+                    <h2>Course catalog</h2>
+                </div>
+            </div>
+
+            <div class="content-grid">
+                <form id="courseForm" class="form-panel">
+                    <h3>Add course</h3>
+                    <label>
+                        Course name
+                        <input id="courseName" name="name" type="text" maxlength="120" placeholder="Algorithms" required>
+                    </label>
+                    <label>
+                        Description
+                        <textarea id="courseDescription" name="description" maxlength="1000" rows="4" placeholder="Weekly study plan, readings, and project notes"></textarea>
+                    </label>
+                    <label>
+                        Student ID
+                        <input id="courseUserId" name="userId" type="number" min="1" value="1" required>
+                    </label>
+                    <button class="primary-button" type="submit">Create course</button>
+                </form>
+
+                <div id="courseList" class="list-panel" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <section id="tasks" class="dashboard-section">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Tasks</p>
+                    <h2>Assignments and reminders</h2>
+                </div>
+            </div>
+
+            <div class="content-grid">
+                <form id="taskForm" class="form-panel">
+                    <h3>Add task</h3>
+                    <label>
+                        Course
+                        <select id="taskCourse" name="courseId" required></select>
+                    </label>
+                    <label>
+                        Title
+                        <input id="taskTitle" name="title" type="text" maxlength="160" placeholder="Finish homework 1" required>
+                    </label>
+                    <label>
+                        Description
+                        <textarea id="taskDescription" name="description" maxlength="2000" rows="4" placeholder="Complete exercises and review notes"></textarea>
+                    </label>
+                    <div class="form-row">
+                        <label>
+                            Due date
+                            <input id="taskDueDate" name="dueDate" type="date" required>
+                        </label>
+                        <label>
+                            Priority
+                            <select id="taskPriority" name="priority" required>
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM" selected>Medium</option>
+                                <option value="HIGH">High</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label>
+                        Status
+                        <select id="taskStatus" name="status" required>
+                            <option value="TODO" selected>To do</option>
+                            <option value="IN_PROGRESS">In progress</option>
+                            <option value="DONE">Done</option>
+                        </select>
+                    </label>
+                    <button class="primary-button" type="submit">Create task</button>
+                </form>
+
+                <div id="taskList" class="list-panel" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <section id="grades" class="dashboard-section">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Grades</p>
+                    <h2>Progress overview</h2>
+                </div>
+            </div>
+
+            <div id="gradeList" class="grade-grid" aria-live="polite"></div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
