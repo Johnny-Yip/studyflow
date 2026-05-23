@@ -1,0 +1,11 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+.idea/
+.vscode/
+*.iml
+
+.DS_Store
+
+hs_err_pid*
+replay_pid*
