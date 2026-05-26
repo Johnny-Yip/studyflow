@@ -6,6 +6,7 @@ import com.studyflow.repository.CourseRepository;
 import com.studyflow.repository.TaskRepository;
 import java.time.Clock;
 import java.time.LocalDate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +17,7 @@ public class DashboardService {
     private final TaskRepository taskRepository;
     private final Clock clock;
 
+    @Autowired
     public DashboardService(CourseRepository courseRepository, TaskRepository taskRepository) {
         this(courseRepository, taskRepository, Clock.systemDefaultZone());
     }
