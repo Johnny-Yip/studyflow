@@ -1,4 +1,5 @@
 # StudyFlow
+[![CI](https://github.com/Johnny-Yip/studyflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Johnny-Yip/studyflow/actions/workflows/ci.yml)
 
 StudyFlow is a full-stack student study planning application built with Java, Spring Boot, and a lightweight HTML/CSS/JavaScript dashboard. It helps students organize courses, create assignments or reminders, track task status, and view progress from a simple browser-based interface.
 
