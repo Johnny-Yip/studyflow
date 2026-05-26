@@ -38,7 +38,9 @@ This project is designed as a computer science portfolio project that demonstrat
 - JavaScript
 
 ## Screenshots
+### Dashboard
 
+![StudyFlow Dashboard](docs/screenshots/dashboard.png)
 
 ### Courses
 
@@ -47,6 +49,10 @@ This project is designed as a computer science portfolio project that demonstrat
 ### Tasks
 
 ![Tasks Section](docs/screenshots/tasks.png)
+
+### Grades
+
+![Grades Section](docs/screenshots/grades.png)
 
 ## Setup Instructions
 
