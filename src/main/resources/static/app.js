@@ -8,6 +8,7 @@ const state = {
         completionPercentage: 0,
     },
     courses: [],
+    allTasks: [],
     tasks: [],
     grades: [],
 };
@@ -18,11 +19,14 @@ const elements = {
     message: document.querySelector("#message"),
     courseForm: document.querySelector("#courseForm"),
     taskForm: document.querySelector("#taskForm"),
+    taskFilterForm: document.querySelector("#taskFilterForm"),
     gradeForm: document.querySelector("#gradeForm"),
     courseList: document.querySelector("#courseList"),
     taskList: document.querySelector("#taskList"),
     gradeList: document.querySelector("#gradeList"),
     taskCourse: document.querySelector("#taskCourse"),
+    taskFilterCourse: document.querySelector("#taskFilterCourse"),
+    taskFilterReset: document.querySelector("#taskFilterReset"),
     gradeCourse: document.querySelector("#gradeCourse"),
     gradeFormTitle: document.querySelector("#gradeFormTitle"),
     gradeSubmitButton: document.querySelector("#gradeSubmitButton"),
@@ -41,6 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.taskDueDate.value = getToday();
     setupTabs();
     setupForms();
+    setupTaskFilters();
     loadDashboard();
 });
 
@@ -141,17 +146,33 @@ function setupForms() {
     });
 }
 
+function setupTaskFilters() {
+    elements.taskFilterForm.addEventListener("input", debounce(loadFilteredTasks, 250));
+    elements.taskFilterForm.addEventListener("change", loadFilteredTasks);
+    elements.taskFilterForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        loadFilteredTasks();
+    });
+
+    elements.taskFilterReset.addEventListener("click", () => {
+        elements.taskFilterForm.reset();
+        loadFilteredTasks();
+    });
+}
+
 async function loadDashboard() {
     try {
         showMessage("Loading dashboard...");
-        const [summary, courses] = await Promise.all([
+        const [summary, courses, allTasks] = await Promise.all([
             request("/api/dashboard/summary"),
             request("/api/courses"),
+            request("/api/tasks?sort=dueDate"),
         ]);
         state.summary = summary;
         state.courses = courses;
+        state.allTasks = allTasks;
         const [tasks, grades] = await Promise.all([
-            loadTasksForCourses(state.courses),
+            request(buildTaskQuery()),
             loadGradesForCourses(state.courses),
         ]);
         state.tasks = tasks;
@@ -163,11 +184,14 @@ async function loadDashboard() {
     }
 }
 
-async function loadTasksForCourses(courses) {
-    const taskGroups = await Promise.all(
-        courses.map((course) => request(`/api/courses/${course.id}/tasks`))
-    );
-    return taskGroups.flat();
+async function loadFilteredTasks() {
+    try {
+        state.tasks = await request(buildTaskQuery());
+        renderTasks();
+        showMessage("");
+    } catch (error) {
+        showMessage(error.message, "error");
+    }
 }
 
 async function loadGradesForCourses(courses) {
@@ -212,6 +236,7 @@ function render() {
     renderMetrics();
     renderCourseOptions(elements.taskCourse, elements.taskForm, "Create a course first");
     renderCourseOptions(elements.gradeCourse, elements.gradeForm, "Create a course first");
+    renderTaskFilterOptions();
     renderCourses();
     renderTasks();
     renderGrades();
@@ -255,7 +280,7 @@ function renderCourses() {
 
     elements.courseList.innerHTML = state.courses
         .map((course) => {
-            const taskCount = state.tasks.filter((task) => task.courseId === course.id).length;
+            const taskCount = state.allTasks.filter((task) => task.courseId === course.id).length;
             const gradeCount = state.grades.filter((grade) => grade.courseId === course.id).length;
             return `
                 <article class="item-card">
@@ -275,6 +300,16 @@ function renderCourses() {
             `;
         })
         .join("");
+}
+
+function renderTaskFilterOptions() {
+    const previousValue = elements.taskFilterCourse.value;
+    elements.taskFilterCourse.innerHTML = '<option value="">All courses</option>' + state.courses
+        .map((course) => `<option value="${course.id}">${escapeHtml(course.name)}</option>`)
+        .join("");
+    if (previousValue && state.courses.some((course) => String(course.id) === previousValue)) {
+        elements.taskFilterCourse.value = previousValue;
+    }
 }
 
 function renderTasks() {
@@ -515,6 +550,33 @@ function formatNumber(value) {
     return Number(value).toLocaleString(undefined, {
         maximumFractionDigits: 2,
     });
+}
+
+function buildTaskQuery() {
+    const params = new URLSearchParams();
+    const formData = new FormData(elements.taskFilterForm);
+
+    for (const [key, value] of formData.entries()) {
+        const normalizedValue = String(value).trim();
+        if (normalizedValue) {
+            params.set(key, normalizedValue);
+        }
+    }
+
+    if (!params.has("sort")) {
+        params.set("sort", "dueDate");
+    }
+
+    return `/api/tasks?${params.toString()}`;
+}
+
+function debounce(callback, delay) {
+    let timeoutId;
+
+    return (...args) => {
+        window.clearTimeout(timeoutId);
+        timeoutId = window.setTimeout(() => callback(...args), delay);
+    };
 }
 
 function getToday() {

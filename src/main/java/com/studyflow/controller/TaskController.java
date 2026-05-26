@@ -2,6 +2,8 @@ package com.studyflow.controller;
 
 import com.studyflow.dto.TaskRequest;
 import com.studyflow.dto.TaskResponse;
+import com.studyflow.entity.Priority;
+import com.studyflow.entity.TaskStatus;
 import com.studyflow.service.TaskService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -23,6 +26,19 @@ public class TaskController {
 
     public TaskController(TaskService taskService) {
         this.taskService = taskService;
+    }
+
+    @GetMapping("/api/tasks")
+    public List<TaskResponse> searchTasks(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(required = false) TaskStatus status,
+            @RequestParam(required = false) Priority priority,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false, defaultValue = "dueDate") String sort
+    ) {
+        return taskService.searchTasks(courseId, status, priority, title, sort).stream()
+                .map(TaskResponse::from)
+                .toList();
     }
 
     @GetMapping("/api/courses/{courseId}/tasks")

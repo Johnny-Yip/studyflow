@@ -10,6 +10,7 @@ This project is designed as a computer science portfolio project that demonstrat
 - Task management for each course
 - Grade management for each course
 - Dashboard summary statistics for courses and tasks
+- Task search, filtering, and sorting
 - Task status tracking with `TODO`, `IN_PROGRESS`, and `DONE`
 - Priority levels with `LOW`, `MEDIUM`, and `HIGH`
 - Frontend dashboard for courses, tasks, and grades
@@ -215,6 +216,28 @@ Get tasks for a course:
 
 ```bash
 curl http://localhost:8080/api/courses/1/tasks
+```
+
+Search, filter, and sort tasks:
+
+```bash
+curl "http://localhost:8080/api/tasks?title=homework&status=TODO&priority=HIGH&courseId=1&sort=dueDate"
+```
+
+Sort tasks by priority:
+
+```bash
+curl "http://localhost:8080/api/tasks?sort=priority"
+```
+
+Task query parameters:
+
+```text
+title: optional title keyword search
+status: optional TODO, IN_PROGRESS, or DONE
+priority: optional LOW, MEDIUM, or HIGH
+courseId: optional course id
+sort: optional dueDate or priority
 ```
 
 Get one task:

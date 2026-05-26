@@ -127,7 +127,46 @@
                     <button class="primary-button" type="submit">Create task</button>
                 </form>
 
-                <div id="taskList" class="list-panel" aria-live="polite"></div>
+                <div class="task-workspace">
+                    <form id="taskFilterForm" class="filter-panel">
+                        <label>
+                            Search title
+                            <input id="taskSearch" name="title" type="search" placeholder="homework">
+                        </label>
+                        <label>
+                            Course
+                            <select id="taskFilterCourse" name="courseId"></select>
+                        </label>
+                        <label>
+                            Status
+                            <select id="taskFilterStatus" name="status">
+                                <option value="">All statuses</option>
+                                <option value="TODO">To do</option>
+                                <option value="IN_PROGRESS">In progress</option>
+                                <option value="DONE">Done</option>
+                            </select>
+                        </label>
+                        <label>
+                            Priority
+                            <select id="taskFilterPriority" name="priority">
+                                <option value="">All priorities</option>
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="HIGH">High</option>
+                            </select>
+                        </label>
+                        <label>
+                            Sort
+                            <select id="taskSort" name="sort">
+                                <option value="dueDate">Due date</option>
+                                <option value="priority">Priority</option>
+                            </select>
+                        </label>
+                        <button id="taskFilterReset" class="secondary-button" type="button">Reset</button>
+                    </form>
+
+                    <div id="taskList" class="list-panel" aria-live="polite"></div>
+                </div>
             </div>
         </section>
 

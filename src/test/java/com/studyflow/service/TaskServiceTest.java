@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.jpa.domain.Specification;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -100,6 +101,74 @@ class TaskServiceTest {
     }
 
     @Test
+    void searchTasksAppliesFiltersAndValidatesCourse() {
+        Task task = new Task();
+        task.setId(11L);
+        task.setTitle("Finish homework");
+        task.setDueDate(LocalDate.now().plusDays(2));
+        task.setPriority(Priority.HIGH);
+        task.setStatus(TaskStatus.TODO);
+
+        when(courseRepository.existsById(2L)).thenReturn(true);
+        when(taskRepository.findAll(anyTaskSpecification())).thenReturn(List.of(task));
+
+        List<Task> tasks = taskService.searchTasks(
+                2L,
+                TaskStatus.TODO,
+                Priority.HIGH,
+                "homework",
+                "dueDate"
+        );
+
+        assertEquals(1, tasks.size());
+        assertEquals("Finish homework", tasks.get(0).getTitle());
+        verify(courseRepository).existsById(2L);
+        verify(taskRepository).findAll(anyTaskSpecification());
+    }
+
+    @Test
+    void searchTasksThrowsWhenCourseFilterDoesNotExist() {
+        when(courseRepository.existsById(404L)).thenReturn(false);
+
+        ResourceNotFoundException exception = assertThrows(
+                ResourceNotFoundException.class,
+                () -> taskService.searchTasks(404L, null, null, null, "dueDate")
+        );
+
+        assertTrue(exception.getMessage().contains("Course not found"));
+    }
+
+    @Test
+    void searchTasksSortsByDueDateThenPriority() {
+        Task laterHigh = task("Later high", LocalDate.now().plusDays(5), Priority.HIGH);
+        Task earlierLow = task("Earlier low", LocalDate.now().plusDays(1), Priority.LOW);
+        Task earlierHigh = task("Earlier high", LocalDate.now().plusDays(1), Priority.HIGH);
+        when(taskRepository.findAll(anyTaskSpecification())).thenReturn(List.of(laterHigh, earlierLow, earlierHigh));
+
+        List<Task> tasks = taskService.searchTasks(null, null, null, null, "dueDate");
+
+        assertEquals("Earlier high", tasks.get(0).getTitle());
+        assertEquals("Earlier low", tasks.get(1).getTitle());
+        assertEquals("Later high", tasks.get(2).getTitle());
+    }
+
+    @Test
+    void searchTasksSortsByPriorityThenDueDate() {
+        Task low = task("Low", LocalDate.now().plusDays(1), Priority.LOW);
+        Task highLater = task("High later", LocalDate.now().plusDays(5), Priority.HIGH);
+        Task highSooner = task("High sooner", LocalDate.now().plusDays(2), Priority.HIGH);
+        Task medium = task("Medium", LocalDate.now().plusDays(1), Priority.MEDIUM);
+        when(taskRepository.findAll(anyTaskSpecification())).thenReturn(List.of(low, highLater, highSooner, medium));
+
+        List<Task> tasks = taskService.searchTasks(null, null, null, null, "priority");
+
+        assertEquals("High sooner", tasks.get(0).getTitle());
+        assertEquals("High later", tasks.get(1).getTitle());
+        assertEquals("Medium", tasks.get(2).getTitle());
+        assertEquals("Low", tasks.get(3).getTitle());
+    }
+
+    @Test
     void updateTaskChangesEditableFields() {
         Task task = new Task();
         task.setId(11L);
@@ -136,5 +205,19 @@ class TaskServiceTest {
         taskService.deleteTask(11L);
 
         verify(taskRepository).delete(task);
+    }
+
+    private Task task(String title, LocalDate dueDate, Priority priority) {
+        Task task = new Task();
+        task.setTitle(title);
+        task.setDueDate(dueDate);
+        task.setPriority(priority);
+        task.setStatus(TaskStatus.TODO);
+        return task;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Specification<Task> anyTaskSpecification() {
+        return any(Specification.class);
     }
 }
