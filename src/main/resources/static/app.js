@@ -1,4 +1,12 @@
 const state = {
+    summary: {
+        totalCourses: 0,
+        totalTasks: 0,
+        completedTasks: 0,
+        openTasks: 0,
+        overdueTasks: 0,
+        completionPercentage: 0,
+    },
     courses: [],
     tasks: [],
     grades: [],
@@ -21,7 +29,10 @@ const elements = {
     gradeCancelButton: document.querySelector("#gradeCancelButton"),
     taskDueDate: document.querySelector("#taskDueDate"),
     courseCount: document.querySelector("#courseCount"),
+    taskCount: document.querySelector("#taskCount"),
+    completedTaskCount: document.querySelector("#completedTaskCount"),
     openTaskCount: document.querySelector("#openTaskCount"),
+    overdueTaskCount: document.querySelector("#overdueTaskCount"),
     completionRate: document.querySelector("#completionRate"),
 };
 
@@ -133,7 +144,12 @@ function setupForms() {
 async function loadDashboard() {
     try {
         showMessage("Loading dashboard...");
-        state.courses = await request("/api/courses");
+        const [summary, courses] = await Promise.all([
+            request("/api/dashboard/summary"),
+            request("/api/courses"),
+        ]);
+        state.summary = summary;
+        state.courses = courses;
         const [tasks, grades] = await Promise.all([
             loadTasksForCourses(state.courses),
             loadGradesForCourses(state.courses),
@@ -202,12 +218,13 @@ function render() {
 }
 
 function renderMetrics() {
-    const completed = state.tasks.filter((task) => task.status === "DONE").length;
-    const open = state.tasks.length - completed;
-    const completion = state.tasks.length ? Math.round((completed / state.tasks.length) * 100) : 0;
+    const completion = Math.round(state.summary.completionPercentage);
 
-    elements.courseCount.textContent = state.courses.length;
-    elements.openTaskCount.textContent = open;
+    elements.courseCount.textContent = state.summary.totalCourses;
+    elements.taskCount.textContent = state.summary.totalTasks;
+    elements.completedTaskCount.textContent = state.summary.completedTasks;
+    elements.openTaskCount.textContent = state.summary.openTasks;
+    elements.overdueTaskCount.textContent = state.summary.overdueTasks;
     elements.completionRate.textContent = `${completion}%`;
 }
 

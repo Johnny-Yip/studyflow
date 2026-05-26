@@ -9,6 +9,7 @@ This project is designed as a computer science portfolio project that demonstrat
 - Course management with create, read, update, and delete API support
 - Task management for each course
 - Grade management for each course
+- Dashboard summary statistics for courses and tasks
 - Task status tracking with `TODO`, `IN_PROGRESS`, and `DONE`
 - Priority levels with `LOW`, `MEDIUM`, and `HIGH`
 - Frontend dashboard for courses, tasks, and grades
@@ -104,7 +105,7 @@ Run the test suite with:
 mvn test
 ```
 
-The tests cover the service layer for course and task workflows, including create, update, delete, and not-found behavior.
+The tests cover service-layer workflows for courses, tasks, grades, and dashboard statistics.
 
 ## How to Open the Frontend Dashboard
 
@@ -123,6 +124,27 @@ src/main/resources/static
 It calls the same REST endpoints used by the API examples below.
 
 ## API Endpoint Examples
+
+### Dashboard
+
+Get dashboard summary statistics:
+
+```bash
+curl http://localhost:8080/api/dashboard/summary
+```
+
+Example response:
+
+```json
+{
+  "totalCourses": 3,
+  "totalTasks": 12,
+  "completedTasks": 7,
+  "openTasks": 5,
+  "overdueTasks": 2,
+  "completionPercentage": 58.333333333333336
+}
+```
 
 ### Courses
 
