@@ -35,19 +35,14 @@ This project is designed as a computer science portfolio project that demonstrat
 
 ## Screenshots
 
-Add screenshots here after running the app locally.
 
-Suggested screenshots:
+### Courses
 
-- Dashboard overview
-- Courses section
-- Tasks section
-- Progress or grades section
+![Courses Section](docs/screenshots/courses.png)
 
-```text
-docs/screenshots/dashboard.png
-docs/screenshots/tasks.png
-```
+### Tasks
+
+![Tasks Section](docs/screenshots/tasks.png)
 
 ## Setup Instructions
 
