@@ -3,6 +3,7 @@ package com.studyflow.exception;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -18,6 +19,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex) {
         return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), Map.of());
+    }
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiError> handleConflict(DuplicateResourceException ex) {
+        return buildError(HttpStatus.CONFLICT, ex.getMessage(), Map.of());
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiError> handleBadCredentials(BadCredentialsException ex) {
+        return buildError(HttpStatus.UNAUTHORIZED, "Invalid email or password", Map.of());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

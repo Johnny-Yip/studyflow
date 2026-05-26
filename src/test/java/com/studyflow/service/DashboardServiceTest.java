@@ -32,22 +32,26 @@ class DashboardServiceTest {
     @Mock
     private TaskRepository taskRepository;
 
+    @Mock
+    private AuthenticatedUserService authenticatedUserService;
+
     private DashboardService dashboardService;
 
     @BeforeEach
     void setUp() {
-        dashboardService = new DashboardService(courseRepository, taskRepository, FIXED_CLOCK);
+        dashboardService = new DashboardService(courseRepository, taskRepository, authenticatedUserService, FIXED_CLOCK);
     }
 
     @Test
     void getSummaryCalculatesTaskStatistics() {
-        when(courseRepository.count()).thenReturn(3L);
-        when(taskRepository.count()).thenReturn(8L);
-        when(taskRepository.countByStatus(TaskStatus.DONE)).thenReturn(5L);
-        when(taskRepository.countByDueDateBeforeAndStatusNot(LocalDate.of(2026, 5, 26), TaskStatus.DONE))
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(courseRepository.countByUserId(1L)).thenReturn(3L);
+        when(taskRepository.countByCourseUserId(1L)).thenReturn(8L);
+        when(taskRepository.countByCourseUserIdAndStatus(1L, TaskStatus.DONE)).thenReturn(5L);
+        when(taskRepository.countByCourseUserIdAndDueDateBeforeAndStatusNot(1L, LocalDate.of(2026, 5, 26), TaskStatus.DONE))
                 .thenReturn(2L);
 
-        DashboardSummaryResponse summary = dashboardService.getSummary();
+        DashboardSummaryResponse summary = dashboardService.getSummary("student@example.com");
 
         assertEquals(3L, summary.totalCourses());
         assertEquals(8L, summary.totalTasks());
@@ -59,13 +63,14 @@ class DashboardServiceTest {
 
     @Test
     void getSummaryReturnsZeroCompletionWhenThereAreNoTasks() {
-        when(courseRepository.count()).thenReturn(2L);
-        when(taskRepository.count()).thenReturn(0L);
-        when(taskRepository.countByStatus(TaskStatus.DONE)).thenReturn(0L);
-        when(taskRepository.countByDueDateBeforeAndStatusNot(LocalDate.of(2026, 5, 26), TaskStatus.DONE))
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(courseRepository.countByUserId(1L)).thenReturn(2L);
+        when(taskRepository.countByCourseUserId(1L)).thenReturn(0L);
+        when(taskRepository.countByCourseUserIdAndStatus(1L, TaskStatus.DONE)).thenReturn(0L);
+        when(taskRepository.countByCourseUserIdAndDueDateBeforeAndStatusNot(1L, LocalDate.of(2026, 5, 26), TaskStatus.DONE))
                 .thenReturn(0L);
 
-        DashboardSummaryResponse summary = dashboardService.getSummary();
+        DashboardSummaryResponse summary = dashboardService.getSummary("student@example.com");
 
         assertEquals(2L, summary.totalCourses());
         assertEquals(0L, summary.totalTasks());
@@ -73,6 +78,7 @@ class DashboardServiceTest {
         assertEquals(0L, summary.openTasks());
         assertEquals(0L, summary.overdueTasks());
         assertEquals(0.0, summary.completionPercentage());
-        verify(taskRepository).countByDueDateBeforeAndStatusNot(LocalDate.of(2026, 5, 26), TaskStatus.DONE);
+        verify(taskRepository)
+                .countByCourseUserIdAndDueDateBeforeAndStatusNot(1L, LocalDate.of(2026, 5, 26), TaskStatus.DONE);
     }
 }

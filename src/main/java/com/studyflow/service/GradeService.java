@@ -15,27 +15,36 @@ public class GradeService {
 
     private final GradeRepository gradeRepository;
     private final CourseRepository courseRepository;
+    private final AuthenticatedUserService authenticatedUserService;
 
-    public GradeService(GradeRepository gradeRepository, CourseRepository courseRepository) {
+    public GradeService(
+            GradeRepository gradeRepository,
+            CourseRepository courseRepository,
+            AuthenticatedUserService authenticatedUserService
+    ) {
         this.gradeRepository = gradeRepository;
         this.courseRepository = courseRepository;
+        this.authenticatedUserService = authenticatedUserService;
     }
 
     @Transactional(readOnly = true)
-    public List<Grade> getGradesByCourse(Long courseId) {
-        ensureCourseExists(courseId);
-        return gradeRepository.findByCourseId(courseId);
+    public List<Grade> getGradesByCourse(Long courseId, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        findCourseOrThrow(courseId, userId);
+        return gradeRepository.findByCourseIdAndCourseUserId(courseId, userId);
     }
 
     @Transactional(readOnly = true)
-    public Grade getGrade(Long id) {
-        return findGradeOrThrow(id);
+    public Grade getGrade(Long id, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        return findGradeOrThrow(id, userId);
     }
 
     @Transactional
-    public Grade createGrade(Long courseId, GradeRequest request) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResourceNotFoundException("Course not found with id " + courseId));
+    public Grade createGrade(Long courseId, GradeRequest request, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        Course course = findCourseOrThrow(courseId, userId);
+
         Grade grade = new Grade(
                 request.assignmentName(),
                 request.score(),
@@ -47,8 +56,9 @@ public class GradeService {
     }
 
     @Transactional
-    public Grade updateGrade(Long id, GradeRequest request) {
-        Grade grade = findGradeOrThrow(id);
+    public Grade updateGrade(Long id, GradeRequest request, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        Grade grade = findGradeOrThrow(id, userId);
         grade.setTitle(request.assignmentName());
         grade.setScore(request.score());
         grade.setMaxScore(request.maxScore());
@@ -57,19 +67,19 @@ public class GradeService {
     }
 
     @Transactional
-    public void deleteGrade(Long id) {
-        Grade grade = findGradeOrThrow(id);
+    public void deleteGrade(Long id, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        Grade grade = findGradeOrThrow(id, userId);
         gradeRepository.delete(grade);
     }
 
-    private Grade findGradeOrThrow(Long id) {
-        return gradeRepository.findById(id)
+    private Grade findGradeOrThrow(Long id, Long userId) {
+        return gradeRepository.findByIdAndCourseUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Grade not found with id " + id));
     }
 
-    private void ensureCourseExists(Long courseId) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResourceNotFoundException("Course not found with id " + courseId);
-        }
+    private Course findCourseOrThrow(Long courseId, Long userId) {
+        return courseRepository.findByIdAndUserId(courseId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Course not found with id " + courseId));
     }
 }

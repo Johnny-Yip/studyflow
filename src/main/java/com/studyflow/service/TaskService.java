@@ -20,16 +20,23 @@ public class TaskService {
 
     private final TaskRepository taskRepository;
     private final CourseRepository courseRepository;
+    private final AuthenticatedUserService authenticatedUserService;
 
-    public TaskService(TaskRepository taskRepository, CourseRepository courseRepository) {
+    public TaskService(
+            TaskRepository taskRepository,
+            CourseRepository courseRepository,
+            AuthenticatedUserService authenticatedUserService
+    ) {
         this.taskRepository = taskRepository;
         this.courseRepository = courseRepository;
+        this.authenticatedUserService = authenticatedUserService;
     }
 
     @Transactional(readOnly = true)
-    public List<Task> getTasksByCourse(Long courseId) {
-        ensureCourseExists(courseId);
-        return taskRepository.findByCourseId(courseId);
+    public List<Task> getTasksByCourse(Long courseId, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        findCourseOrThrow(courseId, userId);
+        return taskRepository.findByCourseIdAndCourseUserId(courseId, userId);
     }
 
     @Transactional(readOnly = true)
@@ -38,13 +45,17 @@ public class TaskService {
             TaskStatus status,
             Priority priority,
             String title,
-            String sort
+            String sort,
+            String email
     ) {
-        if (courseId != null) {
-            ensureCourseExists(courseId);
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+
+        if (courseId != null && !courseRepository.existsByIdAndUserId(courseId, userId)) {
+            throw new ResourceNotFoundException("Course not found with id " + courseId);
         }
 
-        Specification<Task> specification = Specification.where(null);
+        Specification<Task> specification = (root, query, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("course").get("user").get("id"), userId);
 
         if (courseId != null) {
             specification = specification.and((root, query, criteriaBuilder) ->
@@ -73,14 +84,16 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public Task getTask(Long id) {
-        return findTaskOrThrow(id);
+    public Task getTask(Long id, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        return findTaskOrThrow(id, userId);
     }
 
     @Transactional
-    public Task createTask(Long courseId, TaskRequest request) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResourceNotFoundException("Course not found with id " + courseId));
+    public Task createTask(Long courseId, TaskRequest request, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        Course course = findCourseOrThrow(courseId, userId);
+
         Task task = new Task(
                 request.title(),
                 request.description(),
@@ -93,8 +106,9 @@ public class TaskService {
     }
 
     @Transactional
-    public Task updateTask(Long id, TaskRequest request) {
-        Task task = findTaskOrThrow(id);
+    public Task updateTask(Long id, TaskRequest request, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        Task task = findTaskOrThrow(id, userId);
         task.setTitle(request.title());
         task.setDescription(request.description());
         task.setDueDate(request.dueDate());
@@ -104,20 +118,20 @@ public class TaskService {
     }
 
     @Transactional
-    public void deleteTask(Long id) {
-        Task task = findTaskOrThrow(id);
+    public void deleteTask(Long id, String email) {
+        Long userId = authenticatedUserService.getRequiredUserId(email);
+        Task task = findTaskOrThrow(id, userId);
         taskRepository.delete(task);
     }
 
-    private Task findTaskOrThrow(Long id) {
-        return taskRepository.findById(id)
+    private Task findTaskOrThrow(Long id, Long userId) {
+        return taskRepository.findByIdAndCourseUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found with id " + id));
     }
 
-    private void ensureCourseExists(Long courseId) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResourceNotFoundException("Course not found with id " + courseId);
-        }
+    private Course findCourseOrThrow(Long courseId, Long userId) {
+        return courseRepository.findByIdAndUserId(courseId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Course not found with id " + courseId));
     }
 
     private Comparator<Task> taskComparator(String sort) {

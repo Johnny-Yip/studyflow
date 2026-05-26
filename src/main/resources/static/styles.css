@@ -46,6 +46,19 @@ button {
     border-bottom: 1px solid var(--line);
 }
 
+.header-side {
+    display: grid;
+    justify-items: end;
+    gap: 10px;
+}
+
+.user-badge {
+    max-width: 340px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .eyebrow {
     margin: 0 0 6px;
     color: var(--accent);
@@ -110,6 +123,48 @@ main {
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 
+.auth-section {
+    display: grid;
+    place-items: center;
+    padding: 24px 0 10px;
+}
+
+.auth-card {
+    width: min(460px, 100%);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    padding: 22px;
+}
+
+.auth-mode-toggle {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.auth-mode-button {
+    min-height: 42px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-strong);
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.auth-mode-button.active {
+    border-color: var(--accent);
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--accent-strong);
+}
+
+.auth-form h2 {
+    margin-bottom: 14px;
+    font-size: 1.45rem;
+}
+
 .metrics {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -150,6 +205,10 @@ main {
     margin: 0 0 10px;
     color: var(--muted);
     font-weight: 650;
+}
+
+.auth-message {
+    margin-bottom: 14px;
 }
 
 .message.error {
@@ -421,10 +480,15 @@ button:focus-visible {
         padding-top: 28px;
     }
 
+    .header-side {
+        justify-items: stretch;
+    }
+
     .tabs,
     .content-grid,
     .form-row,
-    .filter-panel {
+    .filter-panel,
+    .auth-mode-toggle {
         grid-template-columns: 1fr;
         width: 100%;
     }
@@ -444,5 +508,9 @@ button:focus-visible {
 
     .item-topline {
         display: grid;
+    }
+
+    .user-badge {
+        max-width: none;
     }
 }

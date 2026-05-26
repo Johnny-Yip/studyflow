@@ -1,26 +1,24 @@
 # StudyFlow
 [![CI](https://github.com/Johnny-Yip/studyflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Johnny-Yip/studyflow/actions/workflows/ci.yml)
 
-StudyFlow is a full-stack student study planning application built with Java, Spring Boot, and a lightweight HTML/CSS/JavaScript dashboard. It helps students organize courses, create assignments or reminders, track task status, and view progress from a simple browser-based interface.
-
-This project is designed as a computer science portfolio project that demonstrates REST API design, layered Spring Boot architecture, validation, persistence with Spring Data JPA, unit testing, and a clean static frontend served directly by Spring Boot.
+StudyFlow is a full-stack student planner built with Java 17, Spring Boot, and a static HTML/CSS/JavaScript frontend. It helps students manage courses, tasks, and grades from one dashboard, with secure JWT-based user authentication.
 
 ## Features
 
-- Course management with create, read, update, and delete API support
-- Task management for each course
-- Grade management for each course
-- Dashboard summary statistics for courses and tasks
-- Task search, filtering, and sorting
-- Task status tracking with `TODO`, `IN_PROGRESS`, and `DONE`
-- Priority levels with `LOW`, `MEDIUM`, and `HIGH`
-- Frontend dashboard for courses, tasks, and grades
-- Forms to create courses, tasks, and grades from the browser
-- Buttons to mark tasks completed, edit grades, and delete records
-- Request validation with structured error responses
-- In-memory H2 database for easy local development
-- Seeded demo student account for quick testing
-- Unit tests for service-layer business logic
+- User registration and login APIs
+- BCrypt password hashing
+- JWT authentication for API access
+- Protected course, task, grade, and dashboard endpoints
+- Per-user data isolation (users only access their own records)
+- Course management with create, read, update, and delete support
+- Task management with status tracking (`TODO`, `IN_PROGRESS`, `DONE`)
+- Task search/filter/sort by title, status, priority, course, and sort mode
+- Grade management with weighted score calculations
+- Dashboard summary statistics (courses, tasks, completion, overdue)
+- Frontend login/register flow and authenticated dashboard UI
+- H2 in-memory database for local development
+- JUnit + Mockito unit tests and integration tests for auth/security
+- GitHub Actions CI (`mvn test`)
 
 ## Tech Stack
 
@@ -28,6 +26,8 @@ This project is designed as a computer science portfolio project that demonstrat
 - Spring Boot 3.3.5
 - Spring Web
 - Spring Data JPA
+- Spring Security
+- JWT (`jjwt`)
 - Bean Validation
 - H2 Database
 - Maven
@@ -38,6 +38,7 @@ This project is designed as a computer science portfolio project that demonstrat
 - JavaScript
 
 ## Screenshots
+
 ### Dashboard
 
 ![StudyFlow Dashboard](docs/screenshots/dashboard.png)
@@ -75,13 +76,69 @@ cd StudyFlow
 mvn spring-boot:run
 ```
 
-The application starts at:
+Application URL:
 
 ```text
 http://localhost:8080
 ```
 
-### H2 Database Console
+## Authentication
+
+StudyFlow uses stateless JWT authentication.
+
+### Demo Account (Seeded)
+
+When the app starts with an empty database, one demo account is created:
+
+```text
+name: Demo Student
+email: student@example.com
+password: password123
+```
+
+### Register
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Alice Student",
+    "email": "alice@example.com",
+    "password": "password123"
+  }'
+```
+
+### Login
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "alice@example.com",
+    "password": "password123"
+  }'
+```
+
+Example auth response:
+
+```json
+{
+  "token": "<jwt-token>",
+  "tokenType": "Bearer",
+  "userId": 2,
+  "name": "Alice Student",
+  "email": "alice@example.com"
+}
+```
+
+Use the token for protected endpoints:
+
+```bash
+curl http://localhost:8080/api/dashboard/summary \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+## H2 Database Console
 
 The H2 console is available at:
 
@@ -97,61 +154,29 @@ Username: sa
 Password:
 ```
 
-The app seeds one demo user:
+## Frontend Usage
 
-```text
-id: 1
-name: Demo Student
-email: student@example.com
-```
-
-## How to Run Tests
-
-Run the test suite with:
-
-```bash
-mvn test
-```
-
-The tests cover service-layer workflows for courses, tasks, grades, and dashboard statistics.
-
-## How to Open the Frontend Dashboard
-
-After starting the Spring Boot application, open:
+Open:
 
 ```text
 http://localhost:8080/
 ```
 
-The dashboard is served from:
+Flow:
 
-```text
-src/main/resources/static
-```
-
-It calls the same REST endpoints used by the API examples below.
+1. Register a new account (or sign in with the seeded demo account).
+2. The app stores the JWT in browser storage.
+3. All dashboard operations call protected APIs with `Authorization: Bearer <token>`.
 
 ## API Endpoint Examples
 
+All endpoints below (except `/api/auth/**`) require `Authorization: Bearer <jwt-token>`.
+
 ### Dashboard
 
-Get dashboard summary statistics:
-
 ```bash
-curl http://localhost:8080/api/dashboard/summary
-```
-
-Example response:
-
-```json
-{
-  "totalCourses": 3,
-  "totalTasks": 12,
-  "completedTasks": 7,
-  "openTasks": 5,
-  "overdueTasks": 2,
-  "completionPercentage": 58.333333333333336
-}
+curl http://localhost:8080/api/dashboard/summary \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 ### Courses
@@ -160,47 +185,45 @@ Create a course:
 
 ```bash
 curl -X POST http://localhost:8080/api/courses \
+  -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Algorithms",
-    "description": "Study graph algorithms and dynamic programming",
-    "userId": 1
+    "description": "Graph algorithms and dynamic programming"
   }'
 ```
 
-Get all courses:
+Get current user's courses:
 
 ```bash
-curl http://localhost:8080/api/courses
-```
-
-Get courses for a user:
-
-```bash
-curl "http://localhost:8080/api/courses?userId=1"
+curl http://localhost:8080/api/courses \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 Get one course:
 
 ```bash
-curl http://localhost:8080/api/courses/1
+curl http://localhost:8080/api/courses/1 \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 Update a course:
 
 ```bash
 curl -X PUT http://localhost:8080/api/courses/1 \
+  -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Advanced Algorithms",
-    "description": "Greedy algorithms, graphs, and dynamic programming"
+    "description": "Greedy, graphs, and DP"
   }'
 ```
 
 Delete a course:
 
 ```bash
-curl -X DELETE http://localhost:8080/api/courses/1
+curl -X DELETE http://localhost:8080/api/courses/1 \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 ### Tasks
@@ -209,6 +232,7 @@ Create a task for a course:
 
 ```bash
 curl -X POST http://localhost:8080/api/courses/1/tasks \
+  -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Finish homework 1",
@@ -219,44 +243,39 @@ curl -X POST http://localhost:8080/api/courses/1/tasks \
   }'
 ```
 
-Get tasks for a course:
+Get tasks for one course:
 
 ```bash
-curl http://localhost:8080/api/courses/1/tasks
+curl http://localhost:8080/api/courses/1/tasks \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
-Search, filter, and sort tasks:
+Search/filter/sort tasks:
 
 ```bash
-curl "http://localhost:8080/api/tasks?title=homework&status=TODO&priority=HIGH&courseId=1&sort=dueDate"
+curl "http://localhost:8080/api/tasks?title=homework&status=TODO&priority=HIGH&courseId=1&sort=dueDate" \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 Sort tasks by priority:
 
 ```bash
-curl "http://localhost:8080/api/tasks?sort=priority"
-```
-
-Task query parameters:
-
-```text
-title: optional title keyword search
-status: optional TODO, IN_PROGRESS, or DONE
-priority: optional LOW, MEDIUM, or HIGH
-courseId: optional course id
-sort: optional dueDate or priority
+curl "http://localhost:8080/api/tasks?sort=priority" \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 Get one task:
 
 ```bash
-curl http://localhost:8080/api/tasks/1
+curl http://localhost:8080/api/tasks/1 \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 Update a task:
 
 ```bash
 curl -X PUT http://localhost:8080/api/tasks/1 \
+  -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Finish homework 1",
@@ -270,19 +289,8 @@ curl -X PUT http://localhost:8080/api/tasks/1 \
 Delete a task:
 
 ```bash
-curl -X DELETE http://localhost:8080/api/tasks/1
-```
-
-Valid priorities:
-
-```text
-LOW, MEDIUM, HIGH
-```
-
-Valid task statuses:
-
-```text
-TODO, IN_PROGRESS, DONE
+curl -X DELETE http://localhost:8080/api/tasks/1 \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 ### Grades
@@ -291,6 +299,7 @@ Create a grade for a course:
 
 ```bash
 curl -X POST http://localhost:8080/api/courses/1/grades \
+  -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "assignmentName": "Midterm exam",
@@ -303,19 +312,22 @@ curl -X POST http://localhost:8080/api/courses/1/grades \
 Get grades for a course:
 
 ```bash
-curl http://localhost:8080/api/courses/1/grades
+curl http://localhost:8080/api/courses/1/grades \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 Get one grade:
 
 ```bash
-curl http://localhost:8080/api/grades/1
+curl http://localhost:8080/api/grades/1 \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
 Update a grade:
 
 ```bash
 curl -X PUT http://localhost:8080/api/grades/1 \
+  -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "assignmentName": "Midterm exam",
@@ -328,25 +340,17 @@ curl -X PUT http://localhost:8080/api/grades/1 \
 Delete a grade:
 
 ```bash
-curl -X DELETE http://localhost:8080/api/grades/1
+curl -X DELETE http://localhost:8080/api/grades/1 \
+  -H "Authorization: Bearer <jwt-token>"
 ```
 
-Grade request fields:
+## Validation and Error Responses
 
-```text
-assignmentName: required, max 160 characters
-score: required, zero or greater, must be less than or equal to maxScore
-maxScore: required, greater than zero
-weight: required, between 0 and 100
-```
-
-### Error Response Example
-
-Invalid requests return structured validation errors:
+Example validation error response:
 
 ```json
 {
-  "timestamp": "2026-05-23T12:00:00Z",
+  "timestamp": "2026-05-26T12:00:00Z",
   "status": 400,
   "error": "Bad Request",
   "message": "Validation failed",
@@ -356,12 +360,29 @@ Invalid requests return structured validation errors:
 }
 ```
 
+Authentication errors return `401 Unauthorized`.
 Missing resources return `404 Not Found`.
+Duplicate registration email returns `409 Conflict`.
+
+## Tests
+
+Run all tests:
+
+```bash
+mvn test
+```
+
+The suite includes:
+
+- Service-layer unit tests for courses, tasks, grades, and dashboard
+- Integration tests for registration/login
+- Integration tests for protected endpoint access and data ownership isolation
 
 ## Project Structure
 
 ```text
 StudyFlow
+├── .github/workflows/ci.yml
 ├── src
 │   ├── main
 │   │   ├── java/com/studyflow
@@ -371,6 +392,7 @@ StudyFlow
 │   │   │   ├── entity
 │   │   │   ├── exception
 │   │   │   ├── repository
+│   │   │   ├── security
 │   │   │   └── service
 │   │   └── resources
 │   │       ├── static
@@ -379,22 +401,14 @@ StudyFlow
 │   │       │   └── styles.css
 │   │       └── application.properties
 │   └── test
-│       ├── java/com/studyflow/service
+│       ├── java/com/studyflow
+│       │   ├── controller
+│       │   └── service
 │       └── resources/mockito-extensions
 ├── pom.xml
 └── README.md
 ```
 
-## Future Improvements
-
-- Add user authentication and login sessions
-- Add due-date filtering and task search
-- Add course detail pages with analytics
-- Replace the in-memory H2 database with PostgreSQL for production use
-- Add integration tests for REST controllers
-- Add screenshot assets and deployment instructions
-- Deploy the backend and frontend to a cloud platform
-
 ## Author
 
-Created by a computer science student as a portfolio project to demonstrate practical backend development, RESTful API design, frontend integration, and testable service-layer architecture.
+Created as a portfolio project to demonstrate practical backend development, RESTful API design, secure authentication, frontend integration, and maintainable test coverage.

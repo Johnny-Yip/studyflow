@@ -1,4 +1,11 @@
+const SESSION_TOKEN_KEY = "studyflow.token";
+const SESSION_USER_KEY = "studyflow.user";
+
 const state = {
+    auth: {
+        token: localStorage.getItem(SESSION_TOKEN_KEY) || "",
+        user: readStoredUser(),
+    },
     summary: {
         totalCourses: 0,
         totalTasks: 0,
@@ -16,6 +23,16 @@ const state = {
 const elements = {
     tabs: document.querySelectorAll(".tab-button"),
     sections: document.querySelectorAll(".dashboard-section"),
+    dashboardTabs: document.querySelector("#dashboardTabs"),
+    dashboardShell: document.querySelector("#dashboardShell"),
+    authSection: document.querySelector("#authSection"),
+    authModeButtons: document.querySelectorAll(".auth-mode-button"),
+    authForms: document.querySelectorAll(".auth-form"),
+    authMessage: document.querySelector("#authMessage"),
+    loginForm: document.querySelector("#loginForm"),
+    registerForm: document.querySelector("#registerForm"),
+    logoutButton: document.querySelector("#logoutButton"),
+    authUser: document.querySelector("#authUser"),
     message: document.querySelector("#message"),
     courseForm: document.querySelector("#courseForm"),
     taskForm: document.querySelector("#taskForm"),
@@ -40,14 +57,150 @@ const elements = {
     completionRate: document.querySelector("#completionRate"),
 };
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     elements.taskDueDate.min = getToday();
     elements.taskDueDate.value = getToday();
+
     setupTabs();
     setupForms();
     setupTaskFilters();
-    loadDashboard();
+    setupAuth();
+    renderAuthState();
+
+    if (state.auth.token) {
+        await loadDashboard();
+    }
 });
+
+function setupAuth() {
+    elements.authModeButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            setAuthMode(button.dataset.authMode);
+        });
+    });
+
+    elements.loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        showAuthMessage("Signing in...");
+
+        try {
+            const payload = {
+                email: elements.loginForm.email.value.trim(),
+                password: elements.loginForm.password.value,
+            };
+
+            const response = await request("/api/auth/login", {
+                method: "POST",
+                body: JSON.stringify(payload),
+            }, false);
+
+            setSession(response);
+            showAuthMessage("");
+            await loadDashboard();
+        } catch (error) {
+            showAuthMessage(error.message, "error");
+        }
+    });
+
+    elements.registerForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        showAuthMessage("Creating account...");
+
+        try {
+            const payload = {
+                name: elements.registerForm.name.value.trim(),
+                email: elements.registerForm.email.value.trim(),
+                password: elements.registerForm.password.value,
+            };
+
+            const response = await request("/api/auth/register", {
+                method: "POST",
+                body: JSON.stringify(payload),
+            }, false);
+
+            setSession(response);
+            showAuthMessage("");
+            await loadDashboard();
+        } catch (error) {
+            showAuthMessage(error.message, "error");
+        }
+    });
+
+    elements.logoutButton.addEventListener("click", () => {
+        clearSession();
+        resetDashboardState();
+        renderAuthState();
+        setAuthMode("login");
+        showAuthMessage("Logged out.", "success");
+    });
+}
+
+function setAuthMode(mode) {
+    const normalizedMode = mode === "register" ? "register" : "login";
+
+    elements.authModeButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.authMode === normalizedMode);
+    });
+
+    elements.authForms.forEach((form) => {
+        form.hidden = form.dataset.authMode !== normalizedMode;
+    });
+
+    showAuthMessage("");
+}
+
+function renderAuthState() {
+    const isAuthenticated = Boolean(state.auth.token);
+    elements.authSection.hidden = isAuthenticated;
+    elements.dashboardShell.hidden = !isAuthenticated;
+    elements.dashboardTabs.hidden = !isAuthenticated;
+    elements.logoutButton.hidden = !isAuthenticated;
+    elements.authUser.hidden = !isAuthenticated;
+
+    if (isAuthenticated && state.auth.user) {
+        elements.authUser.textContent = `${state.auth.user.name} (${state.auth.user.email})`;
+        return;
+    }
+
+    elements.authUser.textContent = "";
+}
+
+function setSession(authResponse) {
+    state.auth.token = authResponse.token;
+    state.auth.user = {
+        userId: authResponse.userId,
+        name: authResponse.name,
+        email: authResponse.email,
+    };
+    localStorage.setItem(SESSION_TOKEN_KEY, state.auth.token);
+    localStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.auth.user));
+    elements.loginForm.reset();
+    elements.registerForm.reset();
+    renderAuthState();
+}
+
+function clearSession() {
+    state.auth.token = "";
+    state.auth.user = null;
+    localStorage.removeItem(SESSION_TOKEN_KEY);
+    localStorage.removeItem(SESSION_USER_KEY);
+}
+
+function resetDashboardState() {
+    state.summary = {
+        totalCourses: 0,
+        totalTasks: 0,
+        completedTasks: 0,
+        openTasks: 0,
+        overdueTasks: 0,
+        completionPercentage: 0,
+    };
+    state.courses = [];
+    state.allTasks = [];
+    state.tasks = [];
+    state.grades = [];
+    render();
+}
 
 function setupTabs() {
     elements.tabs.forEach((tab) => {
@@ -72,7 +225,6 @@ function setupForms() {
         const payload = {
             name: elements.courseForm.name.value.trim(),
             description: elements.courseForm.description.value.trim(),
-            userId: Number(elements.courseForm.userId.value),
         };
 
         await request("/api/courses", {
@@ -81,7 +233,6 @@ function setupForms() {
         });
 
         elements.courseForm.reset();
-        elements.courseForm.userId.value = "1";
         showMessage("Course created.", "success");
         await loadDashboard();
     });
@@ -161,6 +312,12 @@ function setupTaskFilters() {
 }
 
 async function loadDashboard() {
+    if (!state.auth.token) {
+        return;
+    }
+
+    renderAuthState();
+
     try {
         showMessage("Loading dashboard...");
         const [summary, courses, allTasks] = await Promise.all([
@@ -185,6 +342,10 @@ async function loadDashboard() {
 }
 
 async function loadFilteredTasks() {
+    if (!state.auth.token) {
+        return;
+    }
+
     try {
         state.tasks = await request(buildTaskQuery());
         renderTasks();
@@ -201,15 +362,29 @@ async function loadGradesForCourses(courses) {
     return gradeGroups.flat();
 }
 
-async function request(url, options = {}) {
+async function request(url, options = {}, withAuth = true) {
+    const headers = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...options.headers,
+    };
+
+    if (withAuth && state.auth.token) {
+        headers.Authorization = `Bearer ${state.auth.token}`;
+    }
+
     const response = await fetch(url, {
-        headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            ...options.headers,
-        },
         ...options,
+        headers,
     });
+
+    if (response.status === 401 && withAuth) {
+        clearSession();
+        resetDashboardState();
+        renderAuthState();
+        setAuthMode("login");
+        throw new Error("Your session expired. Please sign in again.");
+    }
 
     if (!response.ok) {
         const fallback = `${response.status} ${response.statusText}`;
@@ -292,7 +467,6 @@ function renderCourses() {
                         <span class="badge">${taskCount} tasks</span>
                     </div>
                     <div class="meta-row">
-                        <span class="badge">User ${course.userId}</span>
                         <span class="badge">${escapeHtml(course.userName || "Student")}</span>
                         <span class="badge">${gradeCount} grades</span>
                     </div>
@@ -505,6 +679,11 @@ function showMessage(text, type = "") {
     elements.message.className = `message ${type}`.trim();
 }
 
+function showAuthMessage(text, type = "") {
+    elements.authMessage.textContent = text;
+    elements.authMessage.className = `message auth-message ${type}`.trim();
+}
+
 function emptyState(title, text) {
     return `
         <div class="empty-state">
@@ -592,4 +771,18 @@ function escapeHtml(value) {
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+}
+
+function readStoredUser() {
+    const rawValue = localStorage.getItem(SESSION_USER_KEY);
+    if (!rawValue) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(rawValue);
+    } catch {
+        localStorage.removeItem(SESSION_USER_KEY);
+        return null;
+    }
 }

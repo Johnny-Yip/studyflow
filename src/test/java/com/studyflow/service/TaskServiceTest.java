@@ -20,10 +20,10 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.data.jpa.domain.Specification;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.jpa.domain.Specification;
 
 @ExtendWith(MockitoExtension.class)
 class TaskServiceTest {
@@ -33,6 +33,9 @@ class TaskServiceTest {
 
     @Mock
     private CourseRepository courseRepository;
+
+    @Mock
+    private AuthenticatedUserService authenticatedUserService;
 
     @InjectMocks
     private TaskService taskService;
@@ -50,14 +53,15 @@ class TaskServiceTest {
                 TaskStatus.TODO
         );
 
-        when(courseRepository.findById(2L)).thenReturn(Optional.of(course));
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(courseRepository.findByIdAndUserId(2L, 1L)).thenReturn(Optional.of(course));
         when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> {
             Task savedTask = invocation.getArgument(0);
             savedTask.setId(20L);
             return savedTask;
         });
 
-        Task created = taskService.createTask(2L, request);
+        Task created = taskService.createTask(2L, request, "student@example.com");
 
         assertEquals(20L, created.getId());
         assertEquals("Finish homework", created.getTitle());
@@ -75,11 +79,13 @@ class TaskServiceTest {
                 Priority.HIGH,
                 TaskStatus.TODO
         );
-        when(courseRepository.findById(404L)).thenReturn(Optional.empty());
+
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(courseRepository.findByIdAndUserId(404L, 1L)).thenReturn(Optional.empty());
 
         ResourceNotFoundException exception = assertThrows(
                 ResourceNotFoundException.class,
-                () -> taskService.createTask(404L, request)
+                () -> taskService.createTask(404L, request, "student@example.com")
         );
 
         assertTrue(exception.getMessage().contains("Course not found"));
@@ -91,17 +97,21 @@ class TaskServiceTest {
         task.setId(11L);
         task.setTitle("Read chapter 4");
 
-        when(courseRepository.existsById(2L)).thenReturn(true);
-        when(taskRepository.findByCourseId(2L)).thenReturn(List.of(task));
+        Course course = new Course();
+        course.setId(2L);
 
-        List<Task> tasks = taskService.getTasksByCourse(2L);
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(courseRepository.findByIdAndUserId(2L, 1L)).thenReturn(Optional.of(course));
+        when(taskRepository.findByCourseIdAndCourseUserId(2L, 1L)).thenReturn(List.of(task));
+
+        List<Task> tasks = taskService.getTasksByCourse(2L, "student@example.com");
 
         assertEquals(1, tasks.size());
         assertEquals("Read chapter 4", tasks.get(0).getTitle());
     }
 
     @Test
-    void searchTasksAppliesFiltersAndValidatesCourse() {
+    void searchTasksAppliesFiltersAndValidatesCourseOwnership() {
         Task task = new Task();
         task.setId(11L);
         task.setTitle("Finish homework");
@@ -109,7 +119,8 @@ class TaskServiceTest {
         task.setPriority(Priority.HIGH);
         task.setStatus(TaskStatus.TODO);
 
-        when(courseRepository.existsById(2L)).thenReturn(true);
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(courseRepository.existsByIdAndUserId(2L, 1L)).thenReturn(true);
         when(taskRepository.findAll(anyTaskSpecification())).thenReturn(List.of(task));
 
         List<Task> tasks = taskService.searchTasks(
@@ -117,22 +128,24 @@ class TaskServiceTest {
                 TaskStatus.TODO,
                 Priority.HIGH,
                 "homework",
-                "dueDate"
+                "dueDate",
+                "student@example.com"
         );
 
         assertEquals(1, tasks.size());
         assertEquals("Finish homework", tasks.get(0).getTitle());
-        verify(courseRepository).existsById(2L);
+        verify(courseRepository).existsByIdAndUserId(2L, 1L);
         verify(taskRepository).findAll(anyTaskSpecification());
     }
 
     @Test
     void searchTasksThrowsWhenCourseFilterDoesNotExist() {
-        when(courseRepository.existsById(404L)).thenReturn(false);
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(courseRepository.existsByIdAndUserId(404L, 1L)).thenReturn(false);
 
         ResourceNotFoundException exception = assertThrows(
                 ResourceNotFoundException.class,
-                () -> taskService.searchTasks(404L, null, null, null, "dueDate")
+                () -> taskService.searchTasks(404L, null, null, null, "dueDate", "student@example.com")
         );
 
         assertTrue(exception.getMessage().contains("Course not found"));
@@ -143,9 +156,11 @@ class TaskServiceTest {
         Task laterHigh = task("Later high", LocalDate.now().plusDays(5), Priority.HIGH);
         Task earlierLow = task("Earlier low", LocalDate.now().plusDays(1), Priority.LOW);
         Task earlierHigh = task("Earlier high", LocalDate.now().plusDays(1), Priority.HIGH);
+
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
         when(taskRepository.findAll(anyTaskSpecification())).thenReturn(List.of(laterHigh, earlierLow, earlierHigh));
 
-        List<Task> tasks = taskService.searchTasks(null, null, null, null, "dueDate");
+        List<Task> tasks = taskService.searchTasks(null, null, null, null, "dueDate", "student@example.com");
 
         assertEquals("Earlier high", tasks.get(0).getTitle());
         assertEquals("Earlier low", tasks.get(1).getTitle());
@@ -158,9 +173,11 @@ class TaskServiceTest {
         Task highLater = task("High later", LocalDate.now().plusDays(5), Priority.HIGH);
         Task highSooner = task("High sooner", LocalDate.now().plusDays(2), Priority.HIGH);
         Task medium = task("Medium", LocalDate.now().plusDays(1), Priority.MEDIUM);
+
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
         when(taskRepository.findAll(anyTaskSpecification())).thenReturn(List.of(low, highLater, highSooner, medium));
 
-        List<Task> tasks = taskService.searchTasks(null, null, null, null, "priority");
+        List<Task> tasks = taskService.searchTasks(null, null, null, null, "priority", "student@example.com");
 
         assertEquals("High sooner", tasks.get(0).getTitle());
         assertEquals("High later", tasks.get(1).getTitle());
@@ -185,10 +202,12 @@ class TaskServiceTest {
                 Priority.MEDIUM,
                 TaskStatus.IN_PROGRESS
         );
-        when(taskRepository.findById(11L)).thenReturn(Optional.of(task));
+
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(taskRepository.findByIdAndCourseUserId(11L, 1L)).thenReturn(Optional.of(task));
         when(taskRepository.save(task)).thenReturn(task);
 
-        Task updated = taskService.updateTask(11L, request);
+        Task updated = taskService.updateTask(11L, request, "student@example.com");
 
         assertEquals("Updated task", updated.getTitle());
         assertEquals("Updated description", updated.getDescription());
@@ -200,9 +219,11 @@ class TaskServiceTest {
     void deleteTaskDeletesExistingTask() {
         Task task = new Task();
         task.setId(11L);
-        when(taskRepository.findById(11L)).thenReturn(Optional.of(task));
 
-        taskService.deleteTask(11L);
+        when(authenticatedUserService.getRequiredUserId("student@example.com")).thenReturn(1L);
+        when(taskRepository.findByIdAndCourseUserId(11L, 1L)).thenReturn(Optional.of(task));
+
+        taskService.deleteTask(11L, "student@example.com");
 
         verify(taskRepository).delete(task);
     }
