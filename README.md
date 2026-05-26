@@ -8,11 +8,12 @@ This project is designed as a computer science portfolio project that demonstrat
 
 - Course management with create, read, update, and delete API support
 - Task management for each course
+- Grade management for each course
 - Task status tracking with `TODO`, `IN_PROGRESS`, and `DONE`
 - Priority levels with `LOW`, `MEDIUM`, and `HIGH`
-- Frontend dashboard for courses, tasks, and progress overview
-- Forms to create courses and tasks from the browser
-- Buttons to mark tasks completed and delete tasks
+- Frontend dashboard for courses, tasks, and grades
+- Forms to create courses, tasks, and grades from the browser
+- Buttons to mark tasks completed, edit grades, and delete records
 - Request validation with structured error responses
 - In-memory H2 database for easy local development
 - Seeded demo student account for quick testing
@@ -232,6 +233,61 @@ Valid task statuses:
 TODO, IN_PROGRESS, DONE
 ```
 
+### Grades
+
+Create a grade for a course:
+
+```bash
+curl -X POST http://localhost:8080/api/courses/1/grades \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assignmentName": "Midterm exam",
+    "score": 92,
+    "maxScore": 100,
+    "weight": 30
+  }'
+```
+
+Get grades for a course:
+
+```bash
+curl http://localhost:8080/api/courses/1/grades
+```
+
+Get one grade:
+
+```bash
+curl http://localhost:8080/api/grades/1
+```
+
+Update a grade:
+
+```bash
+curl -X PUT http://localhost:8080/api/grades/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "assignmentName": "Midterm exam",
+    "score": 95,
+    "maxScore": 100,
+    "weight": 30
+  }'
+```
+
+Delete a grade:
+
+```bash
+curl -X DELETE http://localhost:8080/api/grades/1
+```
+
+Grade request fields:
+
+```text
+assignmentName: required, max 160 characters
+score: required, zero or greater, must be less than or equal to maxScore
+maxScore: required, greater than zero
+weight: required, between 0 and 100
+```
+
 ### Error Response Example
 
 Invalid requests return structured validation errors:
@@ -280,7 +336,6 @@ StudyFlow
 ## Future Improvements
 
 - Add user authentication and login sessions
-- Add grade-specific REST endpoints and dashboard forms
 - Add due-date filtering and task search
 - Add course detail pages with analytics
 - Replace the in-memory H2 database with PostgreSQL for production use

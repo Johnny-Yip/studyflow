@@ -123,11 +123,43 @@
             <div class="section-heading">
                 <div>
                     <p class="eyebrow">Grades</p>
-                    <h2>Progress overview</h2>
+                    <h2>Gradebook</h2>
                 </div>
             </div>
 
-            <div id="gradeList" class="grade-grid" aria-live="polite"></div>
+            <div class="content-grid">
+                <form id="gradeForm" class="form-panel">
+                    <h3 id="gradeFormTitle">Add grade</h3>
+                    <label>
+                        Course
+                        <select id="gradeCourse" name="courseId" required></select>
+                    </label>
+                    <label>
+                        Assignment name
+                        <input id="gradeAssignmentName" name="assignmentName" type="text" maxlength="160" placeholder="Midterm exam" required>
+                    </label>
+                    <div class="form-row">
+                        <label>
+                            Score
+                            <input id="gradeScore" name="score" type="number" min="0" step="0.01" placeholder="92" required>
+                        </label>
+                        <label>
+                            Max score
+                            <input id="gradeMaxScore" name="maxScore" type="number" min="0.01" step="0.01" placeholder="100" required>
+                        </label>
+                    </div>
+                    <label>
+                        Weight
+                        <input id="gradeWeight" name="weight" type="number" min="0" max="100" step="0.01" placeholder="20" required>
+                    </label>
+                    <div class="form-actions">
+                        <button id="gradeSubmitButton" class="primary-button" type="submit">Create grade</button>
+                        <button id="gradeCancelButton" class="secondary-button" type="button" hidden>Cancel edit</button>
+                    </div>
+                </form>
+
+                <div id="gradeList" class="list-panel" aria-live="polite"></div>
+            </div>
         </section>
     </main>
 

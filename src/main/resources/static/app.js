@@ -1,6 +1,7 @@
 const state = {
     courses: [],
     tasks: [],
+    grades: [],
 };
 
 const elements = {
@@ -9,10 +10,15 @@ const elements = {
     message: document.querySelector("#message"),
     courseForm: document.querySelector("#courseForm"),
     taskForm: document.querySelector("#taskForm"),
+    gradeForm: document.querySelector("#gradeForm"),
     courseList: document.querySelector("#courseList"),
     taskList: document.querySelector("#taskList"),
     gradeList: document.querySelector("#gradeList"),
     taskCourse: document.querySelector("#taskCourse"),
+    gradeCourse: document.querySelector("#gradeCourse"),
+    gradeFormTitle: document.querySelector("#gradeFormTitle"),
+    gradeSubmitButton: document.querySelector("#gradeSubmitButton"),
+    gradeCancelButton: document.querySelector("#gradeCancelButton"),
     taskDueDate: document.querySelector("#taskDueDate"),
     courseCount: document.querySelector("#courseCount"),
     openTaskCount: document.querySelector("#openTaskCount"),
@@ -88,13 +94,52 @@ function setupForms() {
         showMessage("Task created.", "success");
         await loadDashboard();
     });
+
+    elements.gradeForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const gradeId = elements.gradeForm.dataset.gradeId;
+        const courseId = elements.gradeForm.courseId.value;
+        const payload = {
+            assignmentName: elements.gradeForm.assignmentName.value.trim(),
+            score: Number(elements.gradeForm.score.value),
+            maxScore: Number(elements.gradeForm.maxScore.value),
+            weight: Number(elements.gradeForm.weight.value),
+        };
+
+        if (gradeId) {
+            await request(`/api/grades/${gradeId}`, {
+                method: "PUT",
+                body: JSON.stringify(payload),
+            });
+            showMessage("Grade updated.", "success");
+        } else {
+            await request(`/api/courses/${courseId}/grades`, {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+            showMessage("Grade created.", "success");
+        }
+
+        resetGradeForm();
+        await loadDashboard();
+    });
+
+    elements.gradeCancelButton.addEventListener("click", () => {
+        resetGradeForm();
+    });
 }
 
 async function loadDashboard() {
     try {
         showMessage("Loading dashboard...");
         state.courses = await request("/api/courses");
-        state.tasks = await loadTasksForCourses(state.courses);
+        const [tasks, grades] = await Promise.all([
+            loadTasksForCourses(state.courses),
+            loadGradesForCourses(state.courses),
+        ]);
+        state.tasks = tasks;
+        state.grades = grades;
         render();
         showMessage("");
     } catch (error) {
@@ -107,6 +152,13 @@ async function loadTasksForCourses(courses) {
         courses.map((course) => request(`/api/courses/${course.id}/tasks`))
     );
     return taskGroups.flat();
+}
+
+async function loadGradesForCourses(courses) {
+    const gradeGroups = await Promise.all(
+        courses.map((course) => request(`/api/courses/${course.id}/grades`))
+    );
+    return gradeGroups.flat();
 }
 
 async function request(url, options = {}) {
@@ -142,7 +194,8 @@ async function request(url, options = {}) {
 
 function render() {
     renderMetrics();
-    renderCourseOptions();
+    renderCourseOptions(elements.taskCourse, elements.taskForm, "Create a course first");
+    renderCourseOptions(elements.gradeCourse, elements.gradeForm, "Create a course first");
     renderCourses();
     renderTasks();
     renderGrades();
@@ -158,19 +211,23 @@ function renderMetrics() {
     elements.completionRate.textContent = `${completion}%`;
 }
 
-function renderCourseOptions() {
+function renderCourseOptions(select, form, emptyLabel) {
     if (!state.courses.length) {
-        elements.taskCourse.innerHTML = '<option value="">Create a course first</option>';
-        elements.taskCourse.disabled = true;
-        elements.taskForm.querySelector("button").disabled = true;
+        select.innerHTML = `<option value="">${emptyLabel}</option>`;
+        select.disabled = true;
+        form.querySelector("button[type='submit']").disabled = true;
         return;
     }
 
-    elements.taskCourse.disabled = false;
-    elements.taskForm.querySelector("button").disabled = false;
-    elements.taskCourse.innerHTML = state.courses
+    select.disabled = Boolean(form.dataset.gradeId);
+    form.querySelector("button[type='submit']").disabled = false;
+    const previousValue = select.value;
+    select.innerHTML = state.courses
         .map((course) => `<option value="${course.id}">${escapeHtml(course.name)}</option>`)
         .join("");
+    if (previousValue && state.courses.some((course) => String(course.id) === previousValue)) {
+        select.value = previousValue;
+    }
 }
 
 function renderCourses() {
@@ -182,6 +239,7 @@ function renderCourses() {
     elements.courseList.innerHTML = state.courses
         .map((course) => {
             const taskCount = state.tasks.filter((task) => task.courseId === course.id).length;
+            const gradeCount = state.grades.filter((grade) => grade.courseId === course.id).length;
             return `
                 <article class="item-card">
                     <div class="item-topline">
@@ -194,6 +252,7 @@ function renderCourses() {
                     <div class="meta-row">
                         <span class="badge">User ${course.userId}</span>
                         <span class="badge">${escapeHtml(course.userName || "Student")}</span>
+                        <span class="badge">${gradeCount} grades</span>
                     </div>
                 </article>
             `;
@@ -251,29 +310,55 @@ function renderTasks() {
 
 function renderGrades() {
     if (!state.courses.length) {
-        elements.gradeList.innerHTML = emptyState("No grade overview yet", "Create courses and tasks to build a progress snapshot.");
+        elements.gradeList.innerHTML = emptyState("No gradebook yet", "Create a course before adding graded assignments.");
         return;
     }
 
-    elements.gradeList.innerHTML = state.courses
-        .map((course) => {
-            const tasks = state.tasks.filter((task) => task.courseId === course.id);
-            const done = tasks.filter((task) => task.status === "DONE").length;
-            const percent = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
-            const label = tasks.length ? `${done} of ${tasks.length} tasks complete` : "No tasks tracked";
+    if (!state.grades.length) {
+        elements.gradeList.innerHTML = emptyState("No grades yet", "Add an assignment score to start tracking course performance.");
+        return;
+    }
 
+    const sortedGrades = [...state.grades].sort((a, b) => {
+        return a.courseName.localeCompare(b.courseName) || a.assignmentName.localeCompare(b.assignmentName);
+    });
+
+    elements.gradeList.innerHTML = sortedGrades
+        .map((grade) => {
+            const percent = Math.round(grade.percentage);
             return `
-                <article class="grade-card">
-                    <h3>${escapeHtml(course.name)}</h3>
-                    <p class="grade-number">${percent}%</p>
-                    <div class="progress-track" aria-label="${percent}% complete">
-                        <div class="progress-bar" style="width: ${percent}%"></div>
+                <article class="item-card">
+                    <div class="item-topline">
+                        <div>
+                            <h3>${escapeHtml(grade.assignmentName)}</h3>
+                            <p>${escapeHtml(grade.courseName)}</p>
+                        </div>
+                        <span class="grade-score">${formatNumber(grade.score)} / ${formatNumber(grade.maxScore)}</span>
                     </div>
-                    <p>${label}</p>
+                    <div class="progress-track" aria-label="${percent}% score">
+                        <div class="progress-bar" style="width: ${Math.min(percent, 100)}%"></div>
+                    </div>
+                    <div class="meta-row">
+                        <span class="badge">${percent}%</span>
+                        <span class="badge">${formatNumber(grade.weight)}% weight</span>
+                        <span class="badge">${formatNumber(grade.weightedScore)} weighted points</span>
+                    </div>
+                    <div class="action-row">
+                        <button class="secondary-button" type="button" data-action="edit-grade" data-grade-id="${grade.id}">
+                            Edit
+                        </button>
+                        <button class="danger-button" type="button" data-action="delete-grade" data-grade-id="${grade.id}">
+                            Delete
+                        </button>
+                    </div>
                 </article>
             `;
         })
         .join("");
+
+    elements.gradeList.querySelectorAll("button[data-action]").forEach((button) => {
+        button.addEventListener("click", () => handleGradeAction(button));
+    });
 }
 
 async function handleTaskAction(button) {
@@ -310,6 +395,57 @@ async function handleTaskAction(button) {
     } catch (error) {
         showMessage(error.message, "error");
     }
+}
+
+async function handleGradeAction(button) {
+    const gradeId = Number(button.dataset.gradeId);
+    const grade = state.grades.find((item) => item.id === gradeId);
+
+    if (!grade) {
+        return;
+    }
+
+    try {
+        if (button.dataset.action === "edit-grade") {
+            fillGradeForm(grade);
+            return;
+        }
+
+        if (button.dataset.action === "delete-grade") {
+            await request(`/api/grades/${grade.id}`, {
+                method: "DELETE",
+            });
+            resetGradeForm();
+            showMessage("Grade deleted.", "success");
+        }
+
+        await loadDashboard();
+    } catch (error) {
+        showMessage(error.message, "error");
+    }
+}
+
+function fillGradeForm(grade) {
+    elements.gradeForm.dataset.gradeId = grade.id;
+    elements.gradeForm.courseId.value = String(grade.courseId);
+    elements.gradeForm.assignmentName.value = grade.assignmentName;
+    elements.gradeForm.score.value = grade.score;
+    elements.gradeForm.maxScore.value = grade.maxScore;
+    elements.gradeForm.weight.value = grade.weight;
+    elements.gradeCourse.disabled = true;
+    elements.gradeFormTitle.textContent = "Edit grade";
+    elements.gradeSubmitButton.textContent = "Save grade";
+    elements.gradeCancelButton.hidden = false;
+}
+
+function resetGradeForm() {
+    elements.gradeForm.reset();
+    delete elements.gradeForm.dataset.gradeId;
+    elements.gradeCourse.disabled = !state.courses.length;
+    elements.gradeFormTitle.textContent = "Add grade";
+    elements.gradeSubmitButton.textContent = "Create grade";
+    elements.gradeCancelButton.hidden = true;
+    renderCourseOptions(elements.gradeCourse, elements.gradeForm, "Create a course first");
 }
 
 function showMessage(text, type = "") {
@@ -356,6 +492,12 @@ function formatStatus(value) {
 
 function priorityClass(value) {
     return value.toLowerCase();
+}
+
+function formatNumber(value) {
+    return Number(value).toLocaleString(undefined, {
+        maximumFractionDigits: 2,
+    });
 }
 
 function getToday() {

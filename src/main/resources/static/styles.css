@@ -264,6 +264,11 @@ button:focus-visible {
     color: var(--danger);
 }
 
+.form-actions {
+    display: grid;
+    gap: 10px;
+}
+
 .list-panel {
     min-height: 240px;
     padding: 8px;
@@ -347,6 +352,12 @@ button:focus-visible {
 .grade-number {
     margin-bottom: 14px;
     font-size: 2.4rem;
+    font-weight: 850;
+}
+
+.grade-score {
+    color: var(--text);
+    font-size: 1.7rem;
     font-weight: 850;
 }
 

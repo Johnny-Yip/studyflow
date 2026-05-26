@@ -26,6 +26,9 @@ public class Grade {
     @Column(nullable = false)
     private Double maxScore;
 
+    @Column(nullable = false)
+    private Double weight;
+
     @ManyToOne(optional = false)
     @JoinColumn(name = "course_id", nullable = false)
     private Course course;
@@ -33,10 +36,11 @@ public class Grade {
     public Grade() {
     }
 
-    public Grade(String title, Double score, Double maxScore, Course course) {
+    public Grade(String title, Double score, Double maxScore, Double weight, Course course) {
         this.title = title;
         this.score = score;
         this.maxScore = maxScore;
+        this.weight = weight;
         this.course = course;
     }
 
@@ -70,6 +74,14 @@ public class Grade {
 
     public void setMaxScore(Double maxScore) {
         this.maxScore = maxScore;
+    }
+
+    public Double getWeight() {
+        return weight;
+    }
+
+    public void setWeight(Double weight) {
+        this.weight = weight;
     }
 
     public Course getCourse() {
