@@ -1,5 +1,6 @@
 const SESSION_TOKEN_KEY = "studyflow.token";
 const SESSION_USER_KEY = "studyflow.user";
+const AUTH_REQUIRED_MESSAGE = "Please log in to view your planner.";
 
 const state = {
     auth: {
@@ -21,6 +22,7 @@ const state = {
 };
 
 const elements = {
+    appHeader: document.querySelector("#appHeader"),
     tabs: document.querySelectorAll(".tab-button"),
     sections: document.querySelectorAll(".dashboard-section"),
     dashboardTabs: document.querySelector("#dashboardTabs"),
@@ -65,10 +67,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupForms();
     setupTaskFilters();
     setupAuth();
-    renderAuthState();
 
     if (state.auth.token) {
         await loadDashboard();
+    } else {
+        returnToLogin(AUTH_REQUIRED_MESSAGE);
     }
 });
 
@@ -127,15 +130,12 @@ function setupAuth() {
     });
 
     elements.logoutButton.addEventListener("click", () => {
-        clearSession();
-        resetDashboardState();
-        renderAuthState();
-        setAuthMode("login");
-        showAuthMessage("Logged out.", "success");
+        returnToLogin("Logged out.", "success");
     });
 }
 
-function setAuthMode(mode) {
+function setAuthMode(mode, options = {}) {
+    const shouldClearMessage = options.clearMessage ?? true;
     const normalizedMode = mode === "register" ? "register" : "login";
 
     elements.authModeButtons.forEach((button) => {
@@ -146,11 +146,14 @@ function setAuthMode(mode) {
         form.hidden = form.dataset.authMode !== normalizedMode;
     });
 
-    showAuthMessage("");
+    if (shouldClearMessage) {
+        showAuthMessage("");
+    }
 }
 
 function renderAuthState() {
     const isAuthenticated = Boolean(state.auth.token);
+    elements.appHeader.hidden = !isAuthenticated;
     elements.authSection.hidden = isAuthenticated;
     elements.dashboardShell.hidden = !isAuthenticated;
     elements.dashboardTabs.hidden = !isAuthenticated;
@@ -163,6 +166,14 @@ function renderAuthState() {
     }
 
     elements.authUser.textContent = "";
+}
+
+function returnToLogin(message = AUTH_REQUIRED_MESSAGE, type = "") {
+    clearSession();
+    renderAuthState();
+    resetDashboardState();
+    setAuthMode("login", { clearMessage: false });
+    showAuthMessage(message, type);
 }
 
 function setSession(authResponse) {
@@ -313,10 +324,9 @@ function setupTaskFilters() {
 
 async function loadDashboard() {
     if (!state.auth.token) {
+        returnToLogin(AUTH_REQUIRED_MESSAGE);
         return;
     }
-
-    renderAuthState();
 
     try {
         showMessage("Loading dashboard...");
@@ -335,8 +345,14 @@ async function loadDashboard() {
         state.tasks = tasks;
         state.grades = grades;
         render();
+        renderAuthState();
         showMessage("");
     } catch (error) {
+        if (!state.auth.token) {
+            showAuthMessage(error.message || AUTH_REQUIRED_MESSAGE, "error");
+            return;
+        }
+
         showMessage(error.message, "error");
     }
 }
@@ -351,6 +367,11 @@ async function loadFilteredTasks() {
         renderTasks();
         showMessage("");
     } catch (error) {
+        if (!state.auth.token) {
+            showAuthMessage(error.message || AUTH_REQUIRED_MESSAGE, "error");
+            return;
+        }
+
         showMessage(error.message, "error");
     }
 }
@@ -379,23 +400,23 @@ async function request(url, options = {}, withAuth = true) {
     });
 
     if (response.status === 401 && withAuth) {
-        clearSession();
-        resetDashboardState();
-        renderAuthState();
-        setAuthMode("login");
-        throw new Error("Your session expired. Please sign in again.");
+        returnToLogin(AUTH_REQUIRED_MESSAGE, "error");
+        throw new Error(AUTH_REQUIRED_MESSAGE);
+    }
+
+    if (response.status === 401) {
+        const detail = await readErrorMessage(response);
+        if (detail === "Invalid email or password") {
+            throw new Error(detail);
+        }
+
+        returnToLogin(AUTH_REQUIRED_MESSAGE, "error");
+        throw new Error(AUTH_REQUIRED_MESSAGE);
     }
 
     if (!response.ok) {
         const fallback = `${response.status} ${response.statusText}`;
-        let detail = fallback;
-
-        try {
-            const error = await response.json();
-            detail = formatApiError(error) || fallback;
-        } catch {
-            detail = fallback;
-        }
+        const detail = await readErrorMessage(response, fallback);
 
         throw new Error(detail);
     }
@@ -405,6 +426,23 @@ async function request(url, options = {}, withAuth = true) {
     }
 
     return response.json();
+}
+
+async function readErrorMessage(response, fallback = `${response.status} ${response.statusText}`) {
+    let detail = fallback;
+
+    try {
+        const error = await response.json();
+        detail = formatApiError(error) || fallback;
+    } catch {
+        detail = fallback;
+    }
+
+    if (response.status === 401 && (detail === "Unauthorized" || detail === fallback)) {
+        return AUTH_REQUIRED_MESSAGE;
+    }
+
+    return detail;
 }
 
 function render() {

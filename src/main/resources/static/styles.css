@@ -138,6 +138,15 @@ main {
     padding: 22px;
 }
 
+.auth-card-heading {
+    margin-bottom: 18px;
+}
+
+.auth-card-heading h1 {
+    font-size: 1.65rem;
+    line-height: 1.12;
+}
+
 .auth-mode-toggle {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
