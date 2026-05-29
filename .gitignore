@@ -9,3 +9,13 @@ target/
 
 hs_err_pid*
 replay_pid*
+
+# Local Canvas/Study Flow Sync secrets and SQLite data
+.studyflow/
+data/
+studyflow-canvas.properties
+studyflow-canvas.local.properties
+*.local.properties
+*.sqlite
+*.sqlite3
+canvas-sync.db

@@ -1,5 +1,7 @@
 const SESSION_TOKEN_KEY = "studyflow.token";
 const SESSION_USER_KEY = "studyflow.user";
+const CANVAS_BASE_URL_KEY = "studyflow.canvas.baseUrl";
+const CANVAS_TOKEN_KEY = "studyflow.canvas.token";
 const AUTH_REQUIRED_MESSAGE = "Please log in to view your planner.";
 const DEFAULT_API_ERROR_MESSAGE = "Something went wrong. Please try again.";
 const NETWORK_ERROR_MESSAGE = "Unable to reach StudyFlow right now. Please check your connection and try again.";
@@ -33,6 +35,12 @@ const state = {
     allTasks: [],
     tasks: [],
     grades: [],
+    canvas: {
+        bucket: "ALL",
+        tasks: [],
+        syncLogs: [],
+        lastSync: null,
+    },
 };
 
 const elements = {
@@ -54,9 +62,17 @@ const elements = {
     taskForm: document.querySelector("#taskForm"),
     taskFilterForm: document.querySelector("#taskFilterForm"),
     gradeForm: document.querySelector("#gradeForm"),
+    canvasSettingsForm: document.querySelector("#canvasSettingsForm"),
     courseList: document.querySelector("#courseList"),
     taskList: document.querySelector("#taskList"),
     gradeList: document.querySelector("#gradeList"),
+    canvasTaskList: document.querySelector("#canvasTaskList"),
+    canvasSyncSummary: document.querySelector("#canvasSyncSummary"),
+    canvasSyncLogList: document.querySelector("#canvasSyncLogList"),
+    canvasBucketButtons: document.querySelectorAll(".bucket-button"),
+    canvasTestButton: document.querySelector("#canvasTestButton"),
+    canvasSyncButton: document.querySelector("#canvasSyncButton"),
+    canvasMockSyncButton: document.querySelector("#canvasMockSyncButton"),
     taskCourse: document.querySelector("#taskCourse"),
     taskFilterCourse: document.querySelector("#taskFilterCourse"),
     taskFilterReset: document.querySelector("#taskFilterReset"),
@@ -81,6 +97,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupTabs();
     setupForms();
     setupTaskFilters();
+    setupCanvas();
     setupAuth();
 
     if (state.auth.token) {
@@ -97,6 +114,7 @@ function setupValidation() {
         elements.courseForm,
         elements.taskForm,
         elements.gradeForm,
+        elements.canvasSettingsForm,
     ].forEach((form) => {
         if (!form) {
             return;
@@ -277,6 +295,10 @@ function clearSession() {
     state.auth.user = null;
     localStorage.removeItem(SESSION_TOKEN_KEY);
     localStorage.removeItem(SESSION_USER_KEY);
+    sessionStorage.removeItem(CANVAS_TOKEN_KEY);
+    if (elements.canvasSettingsForm) {
+        elements.canvasSettingsForm.accessToken.value = "";
+    }
 }
 
 function resetDashboardState() {
@@ -292,6 +314,12 @@ function resetDashboardState() {
     state.allTasks = [];
     state.tasks = [];
     state.grades = [];
+    state.canvas = {
+        bucket: "ALL",
+        tasks: [],
+        syncLogs: [],
+        lastSync: null,
+    };
     render();
 }
 
@@ -463,6 +491,43 @@ function setupTaskFilters() {
     });
 }
 
+function setupCanvas() {
+    elements.canvasSettingsForm.baseUrl.value = localStorage.getItem(CANVAS_BASE_URL_KEY) || "";
+    elements.canvasSettingsForm.accessToken.value = sessionStorage.getItem(CANVAS_TOKEN_KEY) || "";
+
+    elements.canvasSettingsForm.baseUrl.addEventListener("input", () => {
+        const value = elements.canvasSettingsForm.baseUrl.value.trim();
+        if (value) {
+            localStorage.setItem(CANVAS_BASE_URL_KEY, value);
+        } else {
+            localStorage.removeItem(CANVAS_BASE_URL_KEY);
+        }
+    });
+
+    elements.canvasSettingsForm.accessToken.addEventListener("input", () => {
+        const value = elements.canvasSettingsForm.accessToken.value.trim();
+        if (value) {
+            sessionStorage.setItem(CANVAS_TOKEN_KEY, value);
+        } else {
+            sessionStorage.removeItem(CANVAS_TOKEN_KEY);
+        }
+    });
+
+    elements.canvasSettingsForm.addEventListener("submit", handleCanvasSync);
+    elements.canvasTestButton.addEventListener("click", handleCanvasTest);
+    elements.canvasMockSyncButton.addEventListener("click", handleCanvasMockSync);
+
+    elements.canvasBucketButtons.forEach((button) => {
+        button.addEventListener("click", async () => {
+            state.canvas.bucket = button.dataset.bucket;
+            elements.canvasBucketButtons.forEach((item) => {
+                item.classList.toggle("active", item === button);
+            });
+            await loadCanvasData();
+        });
+    });
+}
+
 async function loadDashboard(options = {}) {
     const {
         showLoading = true,
@@ -489,13 +554,17 @@ async function loadDashboard(options = {}) {
         state.courses = courses;
         state.allTasks = allTasks;
 
-        const [tasks, grades] = await Promise.all([
+        const [tasks, grades, canvasTasks, canvasSyncLogs] = await Promise.all([
             request(buildTaskQuery()),
             loadGradesForCourses(state.courses),
+            request(buildCanvasTaskQuery()),
+            request("/api/canvas/sync-logs"),
         ]);
 
         state.tasks = tasks;
         state.grades = grades;
+        state.canvas.tasks = canvasTasks;
+        state.canvas.syncLogs = canvasSyncLogs;
 
         render();
         renderAuthState();
@@ -524,6 +593,104 @@ async function loadFilteredTasks() {
         state.tasks = await request(buildTaskQuery());
         renderTasks();
         showMessage("");
+    } catch (error) {
+        if (!state.auth.token) {
+            showAuthMessage(error.message || AUTH_REQUIRED_MESSAGE, "error");
+            return;
+        }
+
+        showMessage(error.message || DEFAULT_API_ERROR_MESSAGE, "error");
+    }
+}
+
+async function handleCanvasTest() {
+    clearFormErrors(elements.canvasSettingsForm);
+
+    if (!validateAndDisplay(elements.canvasSettingsForm)) {
+        showMessage(FORM_VALIDATION_SUMMARY, "error");
+        return;
+    }
+
+    setCanvasActionPending(elements.canvasTestButton, true, "Testing...");
+    showMessage("Testing Canvas connection...");
+
+    try {
+        const response = await request("/api/canvas/test", {
+            method: "POST",
+            body: JSON.stringify(buildCanvasSettingsPayload()),
+        });
+        showMessage(response.message, "success");
+    } catch (error) {
+        applyApiFieldErrors(elements.canvasSettingsForm, error.fieldErrors);
+        showMessage(buildFormErrorMessage(error), "error");
+    } finally {
+        setCanvasActionPending(elements.canvasTestButton, false);
+    }
+}
+
+async function handleCanvasSync(event) {
+    event.preventDefault();
+    clearFormErrors(elements.canvasSettingsForm);
+
+    if (!validateAndDisplay(elements.canvasSettingsForm)) {
+        showMessage(FORM_VALIDATION_SUMMARY, "error");
+        return;
+    }
+
+    setCanvasActionPending(elements.canvasSyncButton, true, "Syncing...");
+    showMessage("Syncing Canvas courses and assignments...");
+
+    try {
+        const result = await request("/api/canvas/sync", {
+            method: "POST",
+            body: JSON.stringify(buildCanvasSettingsPayload()),
+        });
+        state.canvas.lastSync = result;
+        await loadCanvasData({ silent: true });
+        showMessage(formatSyncResult(result), "success");
+    } catch (error) {
+        applyApiFieldErrors(elements.canvasSettingsForm, error.fieldErrors);
+        showMessage(buildFormErrorMessage(error), "error");
+    } finally {
+        setCanvasActionPending(elements.canvasSyncButton, false);
+    }
+}
+
+async function handleCanvasMockSync() {
+    setCanvasActionPending(elements.canvasMockSyncButton, true, "Loading demo...");
+    showMessage("Loading demo Canvas data...");
+
+    try {
+        const result = await request("/api/canvas/mock-sync", {
+            method: "POST",
+        });
+        state.canvas.lastSync = result;
+        await loadCanvasData({ silent: true });
+        showMessage(formatSyncResult(result), "success");
+    } catch (error) {
+        showMessage(error.message || DEFAULT_API_ERROR_MESSAGE, "error");
+    } finally {
+        setCanvasActionPending(elements.canvasMockSyncButton, false);
+    }
+}
+
+async function loadCanvasData(options = {}) {
+    const { silent = false } = options;
+    if (!state.auth.token) {
+        return;
+    }
+
+    try {
+        const [tasks, syncLogs] = await Promise.all([
+            request(buildCanvasTaskQuery()),
+            request("/api/canvas/sync-logs"),
+        ]);
+        state.canvas.tasks = tasks;
+        state.canvas.syncLogs = syncLogs;
+        renderCanvas();
+        if (!silent) {
+            showMessage("");
+        }
     } catch (error) {
         if (!state.auth.token) {
             showAuthMessage(error.message || AUTH_REQUIRED_MESSAGE, "error");
@@ -625,6 +792,7 @@ function render() {
     renderCourses();
     renderTasks();
     renderGrades();
+    renderCanvas();
 }
 
 function renderMetrics() {
@@ -799,6 +967,113 @@ function renderGrades() {
     });
 }
 
+function renderCanvas() {
+    renderCanvasSummary();
+    renderCanvasTasks();
+    renderCanvasLogs();
+}
+
+function renderCanvasSummary() {
+    if (state.canvas.lastSync) {
+        const result = state.canvas.lastSync;
+        const warningText = result.warnings?.length
+            ? `<span class="warning-text">${escapeHtml(result.warnings.join(" "))}</span>`
+            : "";
+        elements.canvasSyncSummary.innerHTML = `
+            <strong>Synced ${result.tasksUpserted} Canvas task${result.tasksUpserted === 1 ? "" : "s"}.</strong>
+            <span>${result.coursesFetched} courses, ${result.assignmentsFetched} assignments, ${result.missingFromTodoCount} assignment${result.missingFromTodoCount === 1 ? "" : "s"} missing from Canvas To-do.</span>
+            ${warningText}
+        `;
+        return;
+    }
+
+    const latestLog = state.canvas.syncLogs[0];
+    if (latestLog) {
+        elements.canvasSyncSummary.innerHTML = `
+            <strong>Last sync: ${escapeHtml(latestLog.status.toLowerCase())}.</strong>
+            <span>${latestLog.tasksUpserted} tasks saved locally on ${formatDateTime(latestLog.completedAt)}.</span>
+        `;
+        return;
+    }
+
+    elements.canvasSyncSummary.innerHTML = `
+        <strong>Canvas sync is ready.</strong>
+        <span>Connect Canvas or load demo data to see tasks Canvas To-do may miss.</span>
+    `;
+}
+
+function renderCanvasTasks() {
+    if (!state.canvas.tasks.length) {
+        elements.canvasTaskList.innerHTML = emptyState(
+            `No ${formatBucketLabel(state.canvas.bucket).toLowerCase()} Canvas tasks`,
+            "Sync Canvas or load demo data to fill this smarter task list."
+        );
+        return;
+    }
+
+    elements.canvasTaskList.innerHTML = state.canvas.tasks
+        .map((task) => {
+            const dueLabel = task.dueDate ? `Due ${formatDate(task.dueDate)}` : "No due date";
+            const sourceBadges = (task.sources || [])
+                .map((source) => `<span class="badge source">${escapeHtml(source)}</span>`)
+                .join("");
+            const canvasLink = task.htmlUrl
+                ? `<a class="secondary-button link-button" href="${escapeHtml(task.htmlUrl)}" target="_blank" rel="noreferrer">Open in Canvas</a>`
+                : "";
+
+            return `
+                <article class="item-card canvas-task-card">
+                    <div class="item-topline">
+                        <div>
+                            <h3>${escapeHtml(task.title)}</h3>
+                            <p>${escapeHtml(task.description || "No description")}</p>
+                        </div>
+                        <span class="badge ${canvasStatusClass(task.status)}">${formatCanvasStatus(task.status)}</span>
+                    </div>
+                    <div class="priority-meter" aria-label="Priority score ${task.priorityScore} out of 100">
+                        <div class="priority-fill" style="width: ${Math.min(task.priorityScore, 100)}%"></div>
+                    </div>
+                    <div class="meta-row">
+                        <span class="badge">${escapeHtml(task.courseName)}</span>
+                        <span class="badge ${priorityScoreClass(task.priorityScore)}">Priority ${task.priorityScore}/100 (${escapeHtml(task.priorityLabel)})</span>
+                        <span class="badge">${dueLabel}</span>
+                        ${task.missingFromCanvasTodo ? '<span class="badge missing-todo">Missing from Canvas To-do</span>' : ""}
+                    </div>
+                    <div class="meta-row">
+                        ${sourceBadges}
+                    </div>
+                    ${canvasLink ? `<div class="action-row">${canvasLink}</div>` : ""}
+                </article>
+            `;
+        })
+        .join("");
+}
+
+function renderCanvasLogs() {
+    if (!state.canvas.syncLogs.length) {
+        elements.canvasSyncLogList.innerHTML = emptyState("No sync history yet", "Your local sync log will appear here.");
+        return;
+    }
+
+    elements.canvasSyncLogList.innerHTML = state.canvas.syncLogs
+        .map((log) => `
+            <article class="sync-log-item">
+                <div>
+                    <strong>${escapeHtml(log.status)}</strong>
+                    <span>${formatDateTime(log.completedAt)}</span>
+                </div>
+                <p>${escapeHtml(log.message || "Canvas sync completed.")}</p>
+                <div class="meta-row">
+                    <span class="badge">${log.coursesFetched} courses</span>
+                    <span class="badge">${log.assignmentsFetched} assignments</span>
+                    <span class="badge">${log.tasksUpserted} tasks</span>
+                    <span class="badge">${log.missingFromTodoCount} missing from To-do</span>
+                </div>
+            </article>
+        `)
+        .join("");
+}
+
 async function handleTaskAction(button) {
     const taskId = Number(button.dataset.taskId);
     const task = state.tasks.find((item) => item.id === taskId);
@@ -969,6 +1244,35 @@ function setFormSubmitting(form, isSubmitting, loadingLabel = "") {
     syncFormSubmitState(form);
 }
 
+function setCanvasActionPending(activeButton, isPending, loadingLabel = "") {
+    const buttons = [
+        elements.canvasSyncButton,
+        elements.canvasTestButton,
+        elements.canvasMockSyncButton,
+    ];
+
+    if (isPending) {
+        buttons.forEach((button) => {
+            button.disabled = true;
+        });
+        if (activeButton && loadingLabel) {
+            if (!activeButton.dataset.originalText) {
+                activeButton.dataset.originalText = activeButton.textContent;
+            }
+            activeButton.textContent = loadingLabel;
+        }
+        return;
+    }
+
+    buttons.forEach((button) => {
+        button.disabled = false;
+    });
+    if (activeButton?.dataset.originalText) {
+        activeButton.textContent = activeButton.dataset.originalText;
+        delete activeButton.dataset.originalText;
+    }
+}
+
 function getFormSubmitButton(form) {
     return form.querySelector("button[type='submit']");
 }
@@ -1032,6 +1336,8 @@ function collectValidationErrors(form) {
             return validateTaskForm();
         case "gradeForm":
             return validateGradeForm();
+        case "canvasSettingsForm":
+            return validateCanvasSettingsForm();
         default:
             return {};
     }
@@ -1189,6 +1495,26 @@ function validateGradeForm() {
     return errors;
 }
 
+function validateCanvasSettingsForm() {
+    const errors = {};
+    const baseUrl = elements.canvasSettingsForm.baseUrl.value.trim();
+    const accessToken = elements.canvasSettingsForm.accessToken.value.trim();
+
+    if (baseUrl && !/^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(baseUrl)) {
+        errors.baseUrl = "Enter a valid Canvas URL, such as https://school.instructure.com.";
+    }
+
+    if (baseUrl.length > 500) {
+        errors.baseUrl = "Canvas URL must be 500 characters or fewer.";
+    }
+
+    if (accessToken.length > 500) {
+        errors.accessToken = "Canvas token must be 500 characters or fewer.";
+    }
+
+    return errors;
+}
+
 function applyApiFieldErrors(form, fieldErrors = {}) {
     if (!fieldErrors || typeof fieldErrors !== "object") {
         return;
@@ -1281,13 +1607,54 @@ function formatStatus(value) {
         .join(" ");
 }
 
+function formatCanvasStatus(value) {
+    return formatStatus(value);
+}
+
+function formatBucketLabel(value) {
+    return formatStatus(value || "ALL");
+}
+
 function priorityClass(value) {
     return value.toLowerCase();
+}
+
+function priorityScoreClass(score) {
+    if (score >= 70) {
+        return "high";
+    }
+    if (score >= 40) {
+        return "medium";
+    }
+    return "low";
+}
+
+function canvasStatusClass(value) {
+    if (value === "COMPLETED") {
+        return "done";
+    }
+    if (value === "OVERDUE" || value === "MISSING") {
+        return "high";
+    }
+    if (value === "NO_DUE_DATE") {
+        return "medium";
+    }
+    return "";
 }
 
 function formatNumber(value) {
     return Number(value).toLocaleString(undefined, {
         maximumFractionDigits: 2,
+    });
+}
+
+function formatDateTime(value) {
+    return new Date(value).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
     });
 }
 
@@ -1307,6 +1674,24 @@ function buildTaskQuery() {
     }
 
     return `/api/tasks?${params.toString()}`;
+}
+
+function buildCanvasTaskQuery() {
+    const params = new URLSearchParams();
+    params.set("bucket", state.canvas.bucket);
+    return `/api/canvas/tasks?${params.toString()}`;
+}
+
+function buildCanvasSettingsPayload() {
+    return {
+        baseUrl: elements.canvasSettingsForm.baseUrl.value.trim(),
+        accessToken: elements.canvasSettingsForm.accessToken.value.trim(),
+    };
+}
+
+function formatSyncResult(result) {
+    const warningText = result.warnings?.length ? ` ${result.warnings.join(" ")}` : "";
+    return `Canvas sync saved ${result.tasksUpserted} tasks from ${result.assignmentsFetched} assignments. ${result.missingFromTodoCount} assignment(s) were missing from Canvas To-do.${warningText}`;
 }
 
 function debounce(callback, delay) {

@@ -1,7 +1,7 @@
-# StudyFlow
+# Study Flow Sync
 [![CI](https://github.com/Johnny-Yip/studyflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Johnny-Yip/studyflow/actions/workflows/ci.yml)
 
-StudyFlow is a full-stack student planner built with Java 17, Spring Boot, and a static HTML/CSS/JavaScript frontend. It helps students manage courses, tasks, and grades from one dashboard, with secure JWT-based user authentication.
+Study Flow Sync is a full-stack student planner built with Java 17, Spring Boot, and a static HTML/CSS/JavaScript frontend. It keeps the original StudyFlow course, task, and grade dashboard, then adds a Canvas-powered smart study planner that syncs Canvas courses and assignments into a local SQLite database.
 
 ## Features
 
@@ -15,6 +15,14 @@ StudyFlow is a full-stack student planner built with Java 17, Spring Boot, and a
 - Task search/filter/sort by title, status, priority, course, and sort mode
 - Grade management with weighted score calculations
 - Dashboard summary statistics (courses, tasks, completion, overdue)
+- Canvas connection settings screen with base URL, access token input, and Test Connection
+- Canvas sync for courses, assignments, To-do items, and Planner items when supported
+- Local SQLite storage for Canvas `courses`, `assignments`, `tasks`, and `sync_logs`
+- Smarter Canvas task buckets: Today, This Week, Overdue, No Due Date, and High Priority
+- Priority score from 0 to 100 based on due date, overdue/completed state, and missing status
+- Missing assignment detector that shows assignments even when Canvas To-do omits them
+- Source labels for Assignment API, Todo API, and Planner API
+- Mock Canvas sync data for demos when Canvas is unavailable
 - Frontend login/register flow and authenticated dashboard UI
 - H2 in-memory database for local development
 - JUnit + Mockito unit tests and integration tests for auth/security
@@ -27,6 +35,9 @@ StudyFlow is a full-stack student planner built with Java 17, Spring Boot, and a
 - Spring Web
 - Spring Data JPA
 - Spring Security
+- Java 11+ `HttpClient`
+- Jackson JSON parsing
+- SQLite + JDBC (`sqlite-jdbc`)
 - JWT (`jjwt`)
 - Bean Validation
 - H2 Database
@@ -167,6 +178,49 @@ Flow:
 1. Register a new account (or sign in with the seeded demo account).
 2. The app stores the JWT in browser storage.
 3. All dashboard operations call protected APIs with `Authorization: Bearer <token>`.
+4. Open the Canvas Sync tab to test a Canvas connection, sync real Canvas data, or load mock demo data.
+
+## Canvas Setup
+
+### Create a Canvas Access Token
+
+1. Log in to your Canvas instance, for example `https://school.instructure.com`.
+2. Open Account, then Settings.
+3. Under Approved Integrations, choose New Access Token.
+4. Add a purpose such as `Study Flow Sync`.
+5. Choose an expiration date if your school requires one.
+6. Generate the token and copy it immediately.
+
+If your school disables personal access tokens, ask your Canvas administrator whether API tokens are available for students.
+
+### Connect From The App
+
+In the Canvas Sync tab:
+
+1. Enter the Canvas base URL, for example `https://school.instructure.com`.
+2. Paste the access token.
+3. Click Test connection.
+4. Click Sync Canvas.
+
+The token is not saved by the backend. The browser keeps it only in `sessionStorage` for the current browser session.
+
+### Environment Variable Option
+
+You can avoid typing the Canvas settings into the UI by setting local environment variables before starting the app:
+
+```bash
+export STUDYFLOW_CANVAS_BASE_URL="https://school.instructure.com"
+export STUDYFLOW_CANVAS_TOKEN="<canvas-token>"
+mvn spring-boot:run
+```
+
+### Local Storage And Security
+
+- Canvas data is stored locally in `data/canvas-sync.db`.
+- `data/`, local SQLite files, and local Canvas config file names are ignored by Git.
+- The Canvas token is never hardcoded, stored in SQLite, or printed in application logs.
+- The backend supports Canvas pagination through `Link` headers.
+- Invalid URLs, invalid tokens, network failures, rate limits, empty courses, and assignments with no due date are handled with safe API errors or warnings.
 
 ## API Endpoint Examples
 
@@ -344,6 +398,55 @@ curl -X DELETE http://localhost:8080/api/grades/1 \
   -H "Authorization: Bearer <jwt-token>"
 ```
 
+### Canvas Sync
+
+Test a Canvas connection:
+
+```bash
+curl -X POST http://localhost:8080/api/canvas/test \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "baseUrl": "https://school.instructure.com",
+    "accessToken": "<canvas-token>"
+  }'
+```
+
+Sync Canvas data:
+
+```bash
+curl -X POST http://localhost:8080/api/canvas/sync \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "baseUrl": "https://school.instructure.com",
+    "accessToken": "<canvas-token>"
+  }'
+```
+
+Load mock Canvas data without a token:
+
+```bash
+curl -X POST http://localhost:8080/api/canvas/mock-sync \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+Get synced Canvas tasks:
+
+```bash
+curl "http://localhost:8080/api/canvas/tasks?bucket=HIGH_PRIORITY" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+Supported task buckets are `ALL`, `TODAY`, `THIS_WEEK`, `OVERDUE`, `NO_DUE_DATE`, and `HIGH_PRIORITY`.
+
+Get recent Canvas sync logs:
+
+```bash
+curl http://localhost:8080/api/canvas/sync-logs \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
 ## Validation and Error Responses
 
 Example validation error response:
@@ -363,6 +466,7 @@ Example validation error response:
 Authentication errors return `401 Unauthorized`.
 Missing resources return `404 Not Found`.
 Duplicate registration email returns `409 Conflict`.
+Canvas rate limits return `429 Too Many Requests` when Canvas sends that status.
 
 ## Tests
 
@@ -375,6 +479,8 @@ mvn test
 The suite includes:
 
 - Service-layer unit tests for courses, tasks, grades, and dashboard
+- Canvas priority algorithm tests
+- Mock Canvas sync and SQLite storage tests
 - Integration tests for registration/login
 - Integration tests for protected endpoint access and data ownership isolation
 
@@ -386,6 +492,7 @@ StudyFlow
 ├── src
 │   ├── main
 │   │   ├── java/com/studyflow
+│   │   │   ├── canvas
 │   │   │   ├── config
 │   │   │   ├── controller
 │   │   │   ├── dto
@@ -402,6 +509,7 @@ StudyFlow
 │   │       └── application.properties
 │   └── test
 │       ├── java/com/studyflow
+│       │   ├── canvas
 │       │   ├── controller
 │       │   └── service
 │       └── resources/mockito-extensions

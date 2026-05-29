@@ -10,7 +10,7 @@
     <header id="appHeader" class="app-header" hidden>
         <div>
             <p class="eyebrow">StudyFlow</p>
-            <h1>Student planning dashboard</h1>
+            <h1>Study Flow Sync</h1>
         </div>
         <div class="header-side">
             <span id="authUser" class="badge user-badge" hidden></span>
@@ -18,6 +18,7 @@
             <nav id="dashboardTabs" class="tabs" aria-label="Dashboard sections" hidden>
                 <button class="tab-button active" type="button" data-section="courses">Courses</button>
                 <button class="tab-button" type="button" data-section="tasks">Tasks</button>
+                <button class="tab-button" type="button" data-section="canvas">Canvas Sync</button>
                 <button class="tab-button" type="button" data-section="grades">Grades</button>
             </nav>
         </div>
@@ -28,7 +29,7 @@
             <div class="auth-card">
                 <div class="auth-card-heading">
                     <p class="eyebrow">StudyFlow</p>
-                    <h1>Student planning dashboard</h1>
+                    <h1>Study Flow Sync</h1>
                 </div>
 
                 <div class="auth-mode-toggle" role="tablist" aria-label="Authentication mode">
@@ -257,6 +258,65 @@
                     </form>
 
                     <div id="gradeList" class="list-panel" aria-live="polite"></div>
+                </div>
+            </section>
+
+            <section id="canvas" class="dashboard-section">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Canvas Sync</p>
+                        <h2>Smart study planner</h2>
+                    </div>
+                </div>
+
+                <div class="canvas-grid">
+                    <form id="canvasSettingsForm" class="form-panel">
+                        <h3>Canvas settings</h3>
+                        <p class="helper-text">
+                            Tokens are used only for local requests in this browser session. The backend does not save or print your token.
+                        </p>
+                        <label>
+                            Canvas base URL
+                            <input id="canvasBaseUrl" name="baseUrl" type="url" maxlength="500" placeholder="https://school.instructure.com">
+                        </label>
+                        <label>
+                            Access token
+                            <input id="canvasAccessToken" name="accessToken" type="password" maxlength="500" autocomplete="off" placeholder="Paste token or use STUDYFLOW_CANVAS_TOKEN">
+                        </label>
+                        <div class="form-actions">
+                            <button id="canvasSyncButton" class="primary-button" type="submit">Sync Canvas</button>
+                            <button id="canvasTestButton" class="secondary-button" type="button">Test connection</button>
+                            <button id="canvasMockSyncButton" class="secondary-button" type="button">Load demo Canvas data</button>
+                        </div>
+                    </form>
+
+                    <div class="canvas-workspace">
+                        <div id="canvasSyncSummary" class="sync-summary" aria-live="polite">
+                            <strong>Canvas sync is ready.</strong>
+                            <span>Connect Canvas or load demo data to see tasks Canvas To-do may miss.</span>
+                        </div>
+
+                        <div id="canvasBucketTabs" class="bucket-tabs" aria-label="Canvas task buckets">
+                            <button class="bucket-button active" type="button" data-bucket="ALL">All</button>
+                            <button class="bucket-button" type="button" data-bucket="TODAY">Today</button>
+                            <button class="bucket-button" type="button" data-bucket="THIS_WEEK">This Week</button>
+                            <button class="bucket-button" type="button" data-bucket="OVERDUE">Overdue</button>
+                            <button class="bucket-button" type="button" data-bucket="NO_DUE_DATE">No Due Date</button>
+                            <button class="bucket-button" type="button" data-bucket="HIGH_PRIORITY">High Priority</button>
+                        </div>
+
+                        <div id="canvasTaskList" class="list-panel" aria-live="polite"></div>
+
+                        <div class="sync-log-panel">
+                            <div class="section-heading compact">
+                                <div>
+                                    <p class="eyebrow">Local log</p>
+                                    <h3>Recent syncs</h3>
+                                </div>
+                            </div>
+                            <div id="canvasSyncLogList" aria-live="polite"></div>
+                        </div>
+                    </div>
                 </div>
             </section>
         </div>

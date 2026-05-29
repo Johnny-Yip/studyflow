@@ -1,5 +1,6 @@
 package com.studyflow.exception;
 
+import com.studyflow.canvas.exception.CanvasApiException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -29,6 +30,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiError> handleBadCredentials(BadCredentialsException ex) {
         return buildError(HttpStatus.UNAUTHORIZED, "Invalid email or password", Map.of());
+    }
+
+    @ExceptionHandler(CanvasApiException.class)
+    public ResponseEntity<ApiError> handleCanvasApiException(CanvasApiException ex) {
+        return buildError(ex.getStatus(), ex.getMessage(), Map.of());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
