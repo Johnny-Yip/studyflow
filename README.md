@@ -93,9 +93,24 @@ Application URL:
 http://localhost:8080
 ```
 
+If port `8080` is already in use, stop the other local app first and rerun the same command. For a one-off alternate port during local troubleshooting, you can use:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=8081
+```
+
 ## Authentication
 
 StudyFlow uses stateless JWT authentication.
+
+For local development, StudyFlow generates an in-memory JWT signing key if `STUDYFLOW_JWT_SECRET` is not set. If you want existing JWTs to stay valid across app restarts, set a local environment variable before starting the app:
+
+```bash
+export STUDYFLOW_JWT_SECRET="$(openssl rand -base64 32)"
+mvn spring-boot:run
+```
+
+Do not commit real JWT secrets, Canvas tokens, `.env` files, local config files, or local database files.
 
 ### Demo Account (Seeded)
 
@@ -178,9 +193,19 @@ Flow:
 1. Register a new account (or sign in with the seeded demo account).
 2. The app stores the JWT in browser storage.
 3. All dashboard operations call protected APIs with `Authorization: Bearer <token>`.
-4. Open the Canvas Sync tab to test a Canvas connection, sync real Canvas data, or load mock demo data.
+4. Use the top navigation tabs for Courses, Tasks, Canvas Sync, and Grades.
+5. Open the Canvas Sync tab to test a Canvas connection, sync real Canvas data, or load mock demo data.
 
 ## Canvas Setup
+
+### Open the Canvas Sync Page
+
+1. Start the app with `mvn spring-boot:run`.
+2. Open `http://localhost:8080/`.
+3. Sign in or register.
+4. Click the `Canvas Sync` tab in the authenticated dashboard header.
+
+The Canvas Sync page contains the Canvas base URL field, access token field, Test connection button, Sync Canvas button, Load demo Canvas data button, task bucket filters, and recent local sync logs.
 
 ### Create a Canvas Access Token
 
@@ -204,6 +229,29 @@ In the Canvas Sync tab:
 
 The token is not saved by the backend. The browser keeps it only in `sessionStorage` for the current browser session.
 
+### Run Mock Sync Without A Canvas Token
+
+Use mock sync when you want to demo the Canvas dashboard before getting a real token:
+
+1. Start the app and sign in.
+2. Open the `Canvas Sync` tab.
+3. Leave the Canvas base URL and access token blank.
+4. Click `Load demo Canvas data`.
+5. Confirm the task list shows demo Canvas assignments, including High Priority, Overdue, and No Due Date examples.
+
+Mock sync uses built-in sample data only. It does not call Canvas.
+
+### Test With A Real Canvas Account
+
+1. Start the app and sign in.
+2. Open the `Canvas Sync` tab.
+3. Enter your Canvas base URL, such as `https://school.instructure.com`.
+4. Paste your personal access token into the Access token field.
+5. Click `Test connection` and confirm the success message reports active courses.
+6. Click `Sync Canvas`.
+7. Review the Canvas task buckets: `Today`, `This Week`, `Overdue`, `No Due Date`, and `High Priority`.
+8. Check source badges on tasks. Assignments found through the Assignments API still appear even if Canvas To-do did not list them.
+
 ### Environment Variable Option
 
 You can avoid typing the Canvas settings into the UI by setting local environment variables before starting the app:
@@ -217,7 +265,7 @@ mvn spring-boot:run
 ### Local Storage And Security
 
 - Canvas data is stored locally in `data/canvas-sync.db`.
-- `data/`, local SQLite files, and local Canvas config file names are ignored by Git.
+- `data/`, `.env` files, local SQLite/database files, log files, and local Canvas config file names are ignored by Git.
 - The Canvas token is never hardcoded, stored in SQLite, or printed in application logs.
 - The backend supports Canvas pagination through `Link` headers.
 - Invalid URLs, invalid tokens, network failures, rate limits, empty courses, and assignments with no due date are handled with safe API errors or warnings.

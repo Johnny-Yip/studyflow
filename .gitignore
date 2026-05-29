@@ -16,6 +16,20 @@ data/
 studyflow-canvas.properties
 studyflow-canvas.local.properties
 *.local.properties
+application-local.properties
+application-local.yml
+application-local.yaml
+.env
+.env.*
+!.env.example
 *.sqlite
 *.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
 canvas-sync.db
+
+# Local logs
+logs/
+*.log

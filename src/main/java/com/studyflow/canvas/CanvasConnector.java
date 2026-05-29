@@ -115,7 +115,7 @@ public class CanvasConnector implements CanvasApiClient {
             }
 
             root.forEach(results::add);
-            nextUri = nextLink(response).map(URI::create).orElse(null);
+            nextUri = nextLink(response).map(this::parseNextUri).orElse(null);
         }
 
         return results;
@@ -179,6 +179,18 @@ public class CanvasConnector implements CanvasApiClient {
                     Matcher matcher = NEXT_LINK_PATTERN.matcher(linkHeader);
                     return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
                 });
+    }
+
+    private URI parseNextUri(String rawNextLink) {
+        try {
+            URI nextUri = URI.create(rawNextLink);
+            return nextUri.isAbsolute() ? nextUri : baseUri.resolve(nextUri);
+        } catch (IllegalArgumentException ex) {
+            throw new CanvasApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Canvas pagination link was invalid. Try syncing again later."
+            );
+        }
     }
 
     private Course parseCourse(JsonNode node) {

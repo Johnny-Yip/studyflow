@@ -11,18 +11,19 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class JwtService {
 
-    private final String jwtSecret;
+    private final SecretKey signingKey;
     private final long jwtExpirationMs;
 
     public JwtService(
             @Value("${studyflow.jwt.secret}") String jwtSecret,
             @Value("${studyflow.jwt.expiration-ms}") long jwtExpirationMs
     ) {
-        this.jwtSecret = jwtSecret;
+        this.signingKey = buildSigningKey(jwtSecret);
         this.jwtExpirationMs = jwtExpirationMs;
     }
 
@@ -32,7 +33,7 @@ public class JwtService {
                 .subject(username)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(jwtExpirationMs)))
-                .signWith(getSigningKey())
+                .signWith(signingKey)
                 .compact();
     }
 
@@ -57,14 +58,18 @@ public class JwtService {
 
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
+                .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
     }
 
-    private SecretKey getSigningKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
+    private SecretKey buildSigningKey(String jwtSecret) {
+        if (!StringUtils.hasText(jwtSecret)) {
+            return Jwts.SIG.HS256.key().build();
+        }
+
+        byte[] keyBytes = Decoders.BASE64.decode(jwtSecret.trim());
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }

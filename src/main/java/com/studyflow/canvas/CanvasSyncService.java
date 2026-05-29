@@ -151,6 +151,13 @@ public class CanvasSyncService {
                 ))
                 .toList();
 
+        int noDueDateCount = (int) tasks.stream()
+                .filter(task -> task.status() == CanvasTaskStatus.NO_DUE_DATE)
+                .count();
+        if (noDueDateCount > 0) {
+            warnings.add(noDueDateCount + " Canvas assignment(s) had no due date and were placed in No Due Date.");
+        }
+
         int missingFromTodoCount = (int) tasks.stream()
                 .filter(StudyTask::missingFromCanvasTodo)
                 .count();

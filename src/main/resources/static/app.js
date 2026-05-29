@@ -14,7 +14,9 @@ const FRIENDLY_STATUS_MESSAGES = {
     404: "We could not find that resource.",
     409: "A conflicting item already exists. Please adjust your input.",
     422: "Please review the form and try again.",
+    429: "Canvas is rate limiting requests. Please wait a few minutes and try again.",
     500: "The server ran into an issue. Please try again.",
+    502: "Canvas returned an unexpected response. Please try again.",
     503: "StudyFlow is temporarily unavailable. Please try again shortly.",
 };
 

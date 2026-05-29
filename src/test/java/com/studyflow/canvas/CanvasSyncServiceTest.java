@@ -50,6 +50,7 @@ class CanvasSyncServiceTest {
         assertEquals(4, result.assignmentsFetched());
         assertEquals(4, result.tasksUpserted());
         assertEquals(2, result.missingFromTodoCount());
+        assertTrue(result.warnings().stream().anyMatch(warning -> warning.contains("no due date")));
         assertEquals(4, tasks.size());
         assertEquals(1, noDueDateTasks.size());
         assertEquals(CanvasTaskStatus.NO_DUE_DATE, noDueDateTasks.get(0).status());
