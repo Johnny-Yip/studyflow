@@ -1,6 +1,20 @@
 const SESSION_TOKEN_KEY = "studyflow.token";
 const SESSION_USER_KEY = "studyflow.user";
 const AUTH_REQUIRED_MESSAGE = "Please log in to view your planner.";
+const DEFAULT_API_ERROR_MESSAGE = "Something went wrong. Please try again.";
+const NETWORK_ERROR_MESSAGE = "Unable to reach StudyFlow right now. Please check your connection and try again.";
+const FORM_VALIDATION_SUMMARY = "Please fix the highlighted fields and try again.";
+
+const FRIENDLY_STATUS_MESSAGES = {
+    400: "Please review the form and try again.",
+    401: AUTH_REQUIRED_MESSAGE,
+    403: "You do not have permission to do that.",
+    404: "We could not find that resource.",
+    409: "A conflicting item already exists. Please adjust your input.",
+    422: "Please review the form and try again.",
+    500: "The server ran into an issue. Please try again.",
+    503: "StudyFlow is temporarily unavailable. Please try again shortly.",
+};
 
 const state = {
     auth: {
@@ -63,6 +77,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     elements.taskDueDate.min = getToday();
     elements.taskDueDate.value = getToday();
 
+    setupValidation();
     setupTabs();
     setupForms();
     setupTaskFilters();
@@ -75,6 +90,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 });
 
+function setupValidation() {
+    [
+        elements.loginForm,
+        elements.registerForm,
+        elements.courseForm,
+        elements.taskForm,
+        elements.gradeForm,
+    ].forEach((form) => {
+        if (!form) {
+            return;
+        }
+
+        ensureFieldErrorElements(form);
+        syncFormSubmitState(form);
+    });
+}
+
+function ensureFieldErrorElements(form) {
+    const fields = form.querySelectorAll("input[name], select[name], textarea[name]");
+
+    fields.forEach((field) => {
+        const fieldName = field.name;
+        const errorId = `${form.id}-${fieldName}-error`;
+
+        let errorElement = form.querySelector(`.field-error[data-field-error='${fieldName}']`);
+        if (!errorElement) {
+            errorElement = document.createElement("p");
+            errorElement.className = "field-error";
+            errorElement.dataset.fieldError = fieldName;
+            errorElement.id = errorId;
+            errorElement.setAttribute("aria-live", "polite");
+            field.insertAdjacentElement("afterend", errorElement);
+        }
+
+        field.setAttribute("aria-describedby", errorId);
+        field.addEventListener("input", () => clearFieldError(form, fieldName));
+        field.addEventListener("change", () => clearFieldError(form, fieldName));
+    });
+}
+
 function setupAuth() {
     elements.authModeButtons.forEach((button) => {
         button.addEventListener("click", () => {
@@ -84,6 +139,14 @@ function setupAuth() {
 
     elements.loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        clearFormErrors(elements.loginForm);
+
+        if (!validateAndDisplay(elements.loginForm)) {
+            showAuthMessage(FORM_VALIDATION_SUMMARY, "error");
+            return;
+        }
+
+        setFormSubmitting(elements.loginForm, true, "Signing in...");
         showAuthMessage("Signing in...");
 
         try {
@@ -101,12 +164,23 @@ function setupAuth() {
             showAuthMessage("");
             await loadDashboard();
         } catch (error) {
-            showAuthMessage(error.message, "error");
+            applyApiFieldErrors(elements.loginForm, error.fieldErrors);
+            showAuthMessage(buildFormErrorMessage(error), "error");
+        } finally {
+            setFormSubmitting(elements.loginForm, false);
         }
     });
 
     elements.registerForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        clearFormErrors(elements.registerForm);
+
+        if (!validateAndDisplay(elements.registerForm)) {
+            showAuthMessage(FORM_VALIDATION_SUMMARY, "error");
+            return;
+        }
+
+        setFormSubmitting(elements.registerForm, true, "Creating account...");
         showAuthMessage("Creating account...");
 
         try {
@@ -125,7 +199,10 @@ function setupAuth() {
             showAuthMessage("");
             await loadDashboard();
         } catch (error) {
-            showAuthMessage(error.message, "error");
+            applyApiFieldErrors(elements.registerForm, error.fieldErrors);
+            showAuthMessage(buildFormErrorMessage(error), "error");
+        } finally {
+            setFormSubmitting(elements.registerForm, false);
         }
     });
 
@@ -145,6 +222,9 @@ function setAuthMode(mode, options = {}) {
     elements.authForms.forEach((form) => {
         form.hidden = form.dataset.authMode !== normalizedMode;
     });
+
+    clearFormErrors(elements.loginForm);
+    clearFormErrors(elements.registerForm);
 
     if (shouldClearMessage) {
         showAuthMessage("");
@@ -187,6 +267,8 @@ function setSession(authResponse) {
     localStorage.setItem(SESSION_USER_KEY, JSON.stringify(state.auth.user));
     elements.loginForm.reset();
     elements.registerForm.reset();
+    clearFormErrors(elements.loginForm);
+    clearFormErrors(elements.registerForm);
     renderAuthState();
 }
 
@@ -232,75 +314,134 @@ function setupTabs() {
 function setupForms() {
     elements.courseForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        clearFormErrors(elements.courseForm);
 
-        const payload = {
-            name: elements.courseForm.name.value.trim(),
-            description: elements.courseForm.description.value.trim(),
-        };
+        if (!validateAndDisplay(elements.courseForm)) {
+            showMessage(FORM_VALIDATION_SUMMARY, "error");
+            return;
+        }
 
-        await request("/api/courses", {
-            method: "POST",
-            body: JSON.stringify(payload),
-        });
+        setFormSubmitting(elements.courseForm, true, "Creating course...");
 
-        elements.courseForm.reset();
-        showMessage("Course created.", "success");
-        await loadDashboard();
+        try {
+            const payload = {
+                name: elements.courseForm.name.value.trim(),
+                description: elements.courseForm.description.value.trim(),
+            };
+
+            await request("/api/courses", {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+
+            elements.courseForm.reset();
+            clearFormErrors(elements.courseForm);
+            await loadDashboard({
+                showLoading: false,
+                successMessage: "Course created.",
+            });
+        } catch (error) {
+            applyApiFieldErrors(elements.courseForm, error.fieldErrors);
+            showMessage(buildFormErrorMessage(error), "error");
+        } finally {
+            setFormSubmitting(elements.courseForm, false);
+        }
     });
 
     elements.taskForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        clearFormErrors(elements.taskForm);
 
-        const courseId = elements.taskForm.courseId.value;
-        const payload = {
-            title: elements.taskForm.title.value.trim(),
-            description: elements.taskForm.description.value.trim(),
-            dueDate: elements.taskForm.dueDate.value,
-            priority: elements.taskForm.priority.value,
-            status: elements.taskForm.status.value,
-        };
+        if (!validateAndDisplay(elements.taskForm)) {
+            showMessage(FORM_VALIDATION_SUMMARY, "error");
+            return;
+        }
 
-        await request(`/api/courses/${courseId}/tasks`, {
-            method: "POST",
-            body: JSON.stringify(payload),
-        });
+        setFormSubmitting(elements.taskForm, true, "Creating task...");
 
-        elements.taskForm.reset();
-        elements.taskForm.dueDate.value = getToday();
-        elements.taskForm.priority.value = "MEDIUM";
-        elements.taskForm.status.value = "TODO";
-        showMessage("Task created.", "success");
-        await loadDashboard();
+        try {
+            const courseId = elements.taskForm.courseId.value;
+            const payload = {
+                title: elements.taskForm.title.value.trim(),
+                description: elements.taskForm.description.value.trim(),
+                dueDate: elements.taskForm.dueDate.value,
+                priority: elements.taskForm.priority.value,
+                status: elements.taskForm.status.value,
+            };
+
+            await request(`/api/courses/${courseId}/tasks`, {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+
+            elements.taskForm.reset();
+            elements.taskForm.dueDate.value = getToday();
+            elements.taskForm.priority.value = "MEDIUM";
+            elements.taskForm.status.value = "TODO";
+            clearFormErrors(elements.taskForm);
+            await loadDashboard({
+                showLoading: false,
+                successMessage: "Task created.",
+            });
+        } catch (error) {
+            applyApiFieldErrors(elements.taskForm, error.fieldErrors);
+            showMessage(buildFormErrorMessage(error), "error");
+        } finally {
+            setFormSubmitting(elements.taskForm, false);
+        }
     });
 
     elements.gradeForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        clearFormErrors(elements.gradeForm);
+
+        if (!validateAndDisplay(elements.gradeForm)) {
+            showMessage(FORM_VALIDATION_SUMMARY, "error");
+            return;
+        }
 
         const gradeId = elements.gradeForm.dataset.gradeId;
-        const courseId = elements.gradeForm.courseId.value;
-        const payload = {
-            assignmentName: elements.gradeForm.assignmentName.value.trim(),
-            score: Number(elements.gradeForm.score.value),
-            maxScore: Number(elements.gradeForm.maxScore.value),
-            weight: Number(elements.gradeForm.weight.value),
-        };
+        setFormSubmitting(elements.gradeForm, true, gradeId ? "Saving grade..." : "Creating grade...");
 
-        if (gradeId) {
-            await request(`/api/grades/${gradeId}`, {
-                method: "PUT",
-                body: JSON.stringify(payload),
-            });
-            showMessage("Grade updated.", "success");
-        } else {
+        try {
+            const courseId = elements.gradeForm.courseId.value;
+            const payload = {
+                assignmentName: elements.gradeForm.assignmentName.value.trim(),
+                score: Number(elements.gradeForm.score.value),
+                maxScore: Number(elements.gradeForm.maxScore.value),
+                weight: Number(elements.gradeForm.weight.value),
+            };
+
+            if (gradeId) {
+                await request(`/api/grades/${gradeId}`, {
+                    method: "PUT",
+                    body: JSON.stringify(payload),
+                });
+
+                resetGradeForm();
+                await loadDashboard({
+                    showLoading: false,
+                    successMessage: "Grade updated.",
+                });
+                return;
+            }
+
             await request(`/api/courses/${courseId}/grades`, {
                 method: "POST",
                 body: JSON.stringify(payload),
             });
-            showMessage("Grade created.", "success");
-        }
 
-        resetGradeForm();
-        await loadDashboard();
+            resetGradeForm();
+            await loadDashboard({
+                showLoading: false,
+                successMessage: "Grade created.",
+            });
+        } catch (error) {
+            applyApiFieldErrors(elements.gradeForm, error.fieldErrors);
+            showMessage(buildFormErrorMessage(error), "error");
+        } finally {
+            setFormSubmitting(elements.gradeForm, false);
+        }
     });
 
     elements.gradeCancelButton.addEventListener("click", () => {
@@ -322,38 +463,55 @@ function setupTaskFilters() {
     });
 }
 
-async function loadDashboard() {
+async function loadDashboard(options = {}) {
+    const {
+        showLoading = true,
+        successMessage = "",
+    } = options;
+
     if (!state.auth.token) {
         returnToLogin(AUTH_REQUIRED_MESSAGE);
         return;
     }
 
     try {
-        showMessage("Loading dashboard...");
+        if (showLoading) {
+            showMessage("Loading dashboard...");
+        }
+
         const [summary, courses, allTasks] = await Promise.all([
             request("/api/dashboard/summary"),
             request("/api/courses"),
             request("/api/tasks?sort=dueDate"),
         ]);
+
         state.summary = summary;
         state.courses = courses;
         state.allTasks = allTasks;
+
         const [tasks, grades] = await Promise.all([
             request(buildTaskQuery()),
             loadGradesForCourses(state.courses),
         ]);
+
         state.tasks = tasks;
         state.grades = grades;
+
         render();
         renderAuthState();
-        showMessage("");
+
+        if (successMessage) {
+            showMessage(successMessage, "success");
+        } else {
+            showMessage("");
+        }
     } catch (error) {
         if (!state.auth.token) {
             showAuthMessage(error.message || AUTH_REQUIRED_MESSAGE, "error");
             return;
         }
 
-        showMessage(error.message, "error");
+        showMessage(error.message || DEFAULT_API_ERROR_MESSAGE, "error");
     }
 }
 
@@ -372,7 +530,7 @@ async function loadFilteredTasks() {
             return;
         }
 
-        showMessage(error.message, "error");
+        showMessage(error.message || DEFAULT_API_ERROR_MESSAGE, "error");
     }
 }
 
@@ -394,31 +552,28 @@ async function request(url, options = {}, withAuth = true) {
         headers.Authorization = `Bearer ${state.auth.token}`;
     }
 
-    const response = await fetch(url, {
-        ...options,
-        headers,
-    });
+    let response;
+    try {
+        response = await fetch(url, {
+            ...options,
+            headers,
+        });
+    } catch {
+        throw createRequestError(NETWORK_ERROR_MESSAGE);
+    }
 
     if (response.status === 401 && withAuth) {
         returnToLogin(AUTH_REQUIRED_MESSAGE, "error");
-        throw new Error(AUTH_REQUIRED_MESSAGE);
-    }
-
-    if (response.status === 401) {
-        const detail = await readErrorMessage(response);
-        if (detail === "Invalid email or password") {
-            throw new Error(detail);
-        }
-
-        returnToLogin(AUTH_REQUIRED_MESSAGE, "error");
-        throw new Error(AUTH_REQUIRED_MESSAGE);
+        throw createRequestError(AUTH_REQUIRED_MESSAGE, { status: 401 });
     }
 
     if (!response.ok) {
-        const fallback = `${response.status} ${response.statusText}`;
-        const detail = await readErrorMessage(response, fallback);
-
-        throw new Error(detail);
+        const payload = await readErrorPayload(response);
+        const message = formatResponseError(response.status, payload);
+        throw createRequestError(message, {
+            status: response.status,
+            fieldErrors: payload?.fieldErrors || {},
+        });
     }
 
     if (response.status === 204) {
@@ -428,21 +583,38 @@ async function request(url, options = {}, withAuth = true) {
     return response.json();
 }
 
-async function readErrorMessage(response, fallback = `${response.status} ${response.statusText}`) {
-    let detail = fallback;
-
+async function readErrorPayload(response) {
     try {
-        const error = await response.json();
-        detail = formatApiError(error) || fallback;
+        return await response.json();
     } catch {
-        detail = fallback;
+        return null;
+    }
+}
+
+function createRequestError(message, metadata = {}) {
+    const error = new Error(message || DEFAULT_API_ERROR_MESSAGE);
+    error.status = metadata.status || 0;
+    error.fieldErrors = metadata.fieldErrors || {};
+    return error;
+}
+
+function formatResponseError(status, payload) {
+    const apiMessage = formatApiError(payload);
+    const hasFieldErrors = Boolean(payload?.fieldErrors && Object.keys(payload.fieldErrors).length);
+
+    if (hasFieldErrors) {
+        return FORM_VALIDATION_SUMMARY;
     }
 
-    if (response.status === 401 && (detail === "Unauthorized" || detail === fallback)) {
-        return AUTH_REQUIRED_MESSAGE;
+    if (apiMessage) {
+        return apiMessage;
     }
 
-    return detail;
+    return fallbackErrorMessage(status);
+}
+
+function fallbackErrorMessage(status) {
+    return FRIENDLY_STATUS_MESSAGES[status] || DEFAULT_API_ERROR_MESSAGE;
 }
 
 function render() {
@@ -470,19 +642,21 @@ function renderCourseOptions(select, form, emptyLabel) {
     if (!state.courses.length) {
         select.innerHTML = `<option value="">${emptyLabel}</option>`;
         select.disabled = true;
-        form.querySelector("button[type='submit']").disabled = true;
+        syncFormSubmitState(form);
         return;
     }
 
-    select.disabled = Boolean(form.dataset.gradeId);
-    form.querySelector("button[type='submit']").disabled = false;
     const previousValue = select.value;
     select.innerHTML = state.courses
         .map((course) => `<option value="${course.id}">${escapeHtml(course.name)}</option>`)
         .join("");
+
     if (previousValue && state.courses.some((course) => String(course.id) === previousValue)) {
         select.value = previousValue;
     }
+
+    select.disabled = form === elements.gradeForm && Boolean(form.dataset.gradeId);
+    syncFormSubmitState(form);
 }
 
 function renderCourses() {
@@ -645,19 +819,26 @@ async function handleTaskAction(button) {
                     status: "DONE",
                 }),
             });
-            showMessage("Task marked done.", "success");
+
+            await loadDashboard({
+                showLoading: false,
+                successMessage: "Task updated.",
+            });
+            return;
         }
 
         if (button.dataset.action === "delete") {
             await request(`/api/tasks/${task.id}`, {
                 method: "DELETE",
             });
-            showMessage("Task deleted.", "success");
-        }
 
-        await loadDashboard();
+            await loadDashboard({
+                showLoading: false,
+                successMessage: "Task deleted.",
+            });
+        }
     } catch (error) {
-        showMessage(error.message, "error");
+        showMessage(error.message || DEFAULT_API_ERROR_MESSAGE, "error");
     }
 }
 
@@ -679,13 +860,15 @@ async function handleGradeAction(button) {
             await request(`/api/grades/${grade.id}`, {
                 method: "DELETE",
             });
-            resetGradeForm();
-            showMessage("Grade deleted.", "success");
-        }
 
-        await loadDashboard();
+            resetGradeForm();
+            await loadDashboard({
+                showLoading: false,
+                successMessage: "Grade deleted.",
+            });
+        }
     } catch (error) {
-        showMessage(error.message, "error");
+        showMessage(error.message || DEFAULT_API_ERROR_MESSAGE, "error");
     }
 }
 
@@ -700,6 +883,8 @@ function fillGradeForm(grade) {
     elements.gradeFormTitle.textContent = "Edit grade";
     elements.gradeSubmitButton.textContent = "Save grade";
     elements.gradeCancelButton.hidden = false;
+    clearFormErrors(elements.gradeForm);
+    syncFormSubmitState(elements.gradeForm);
 }
 
 function resetGradeForm() {
@@ -709,7 +894,10 @@ function resetGradeForm() {
     elements.gradeFormTitle.textContent = "Add grade";
     elements.gradeSubmitButton.textContent = "Create grade";
     elements.gradeCancelButton.hidden = true;
+    delete elements.gradeSubmitButton.dataset.originalText;
+    clearFormErrors(elements.gradeForm);
     renderCourseOptions(elements.gradeCourse, elements.gradeForm, "Create a course first");
+    syncFormSubmitState(elements.gradeForm);
 }
 
 function showMessage(text, type = "") {
@@ -732,11 +920,345 @@ function emptyState(title, text) {
 }
 
 function formatApiError(error) {
-    if (error.fieldErrors) {
-        return Object.values(error.fieldErrors).join(" ");
+    if (!error || typeof error !== "object") {
+        return "";
     }
 
-    return error.message;
+    const fieldMessages = error.fieldErrors && typeof error.fieldErrors === "object"
+        ? Object.values(error.fieldErrors).filter(Boolean)
+        : [];
+
+    if (fieldMessages.length) {
+        return fieldMessages.join(" ");
+    }
+
+    if (typeof error.message === "string" && error.message.trim() && error.message !== "Validation failed") {
+        return error.message.trim();
+    }
+
+    return "";
+}
+
+function setFormSubmitting(form, isSubmitting, loadingLabel = "") {
+    if (!form) {
+        return;
+    }
+
+    const submitButton = getFormSubmitButton(form);
+    if (!submitButton) {
+        return;
+    }
+
+    if (isSubmitting) {
+        form.dataset.submitting = "true";
+        if (!submitButton.dataset.originalText) {
+            submitButton.dataset.originalText = submitButton.textContent;
+        }
+        if (loadingLabel) {
+            submitButton.textContent = loadingLabel;
+        }
+        submitButton.disabled = true;
+        return;
+    }
+
+    form.dataset.submitting = "false";
+    if (submitButton.dataset.originalText) {
+        submitButton.textContent = submitButton.dataset.originalText;
+        delete submitButton.dataset.originalText;
+    }
+    syncFormSubmitState(form);
+}
+
+function getFormSubmitButton(form) {
+    return form.querySelector("button[type='submit']");
+}
+
+function isFormSubmitting(form) {
+    return form.dataset.submitting === "true";
+}
+
+function syncFormSubmitState(form) {
+    if (!form) {
+        return;
+    }
+
+    const submitButton = getFormSubmitButton(form);
+    if (!submitButton) {
+        return;
+    }
+
+    if (isFormSubmitting(form)) {
+        submitButton.disabled = true;
+        return;
+    }
+
+    if ((form === elements.taskForm || form === elements.gradeForm) && !state.courses.length) {
+        submitButton.disabled = true;
+        return;
+    }
+
+    submitButton.disabled = false;
+}
+
+function validateAndDisplay(form) {
+    const errors = collectValidationErrors(form);
+
+    if (!Object.keys(errors).length) {
+        return true;
+    }
+
+    Object.entries(errors).forEach(([fieldName, message]) => {
+        setFieldError(form, fieldName, message);
+    });
+
+    const firstFieldName = Object.keys(errors)[0];
+    const firstField = form.elements.namedItem(firstFieldName);
+    if (firstField && typeof firstField.focus === "function") {
+        firstField.focus();
+    }
+
+    return false;
+}
+
+function collectValidationErrors(form) {
+    switch (form.id) {
+        case "loginForm":
+            return validateLoginForm();
+        case "registerForm":
+            return validateRegisterForm();
+        case "courseForm":
+            return validateCourseForm();
+        case "taskForm":
+            return validateTaskForm();
+        case "gradeForm":
+            return validateGradeForm();
+        default:
+            return {};
+    }
+}
+
+function validateLoginForm() {
+    const errors = {};
+    const email = elements.loginForm.email.value.trim();
+    const password = elements.loginForm.password.value;
+
+    if (!email) {
+        errors.email = "Email is required.";
+    } else if (!isValidEmail(email)) {
+        errors.email = "Enter a valid email address.";
+    }
+
+    if (!password) {
+        errors.password = "Password is required.";
+    } else if (password.length < 8) {
+        errors.password = "Password must be at least 8 characters.";
+    }
+
+    return errors;
+}
+
+function validateRegisterForm() {
+    const errors = {};
+    const name = elements.registerForm.name.value.trim();
+    const email = elements.registerForm.email.value.trim();
+    const password = elements.registerForm.password.value;
+
+    if (!name) {
+        errors.name = "Full name is required.";
+    } else if (name.length > 120) {
+        errors.name = "Full name must be 120 characters or fewer.";
+    }
+
+    if (!email) {
+        errors.email = "Email is required.";
+    } else if (!isValidEmail(email)) {
+        errors.email = "Enter a valid email address.";
+    }
+
+    if (!password) {
+        errors.password = "Password is required.";
+    } else if (password.length < 8 || password.length > 72) {
+        errors.password = "Password must be between 8 and 72 characters.";
+    }
+
+    return errors;
+}
+
+function validateCourseForm() {
+    const errors = {};
+    const name = elements.courseForm.name.value.trim();
+    const description = elements.courseForm.description.value.trim();
+
+    if (!name) {
+        errors.name = "Course name is required.";
+    } else if (name.length > 120) {
+        errors.name = "Course name must be 120 characters or fewer.";
+    }
+
+    if (description.length > 1000) {
+        errors.description = "Description must be 1000 characters or fewer.";
+    }
+
+    return errors;
+}
+
+function validateTaskForm() {
+    const errors = {};
+    const courseId = elements.taskForm.courseId.value;
+    const title = elements.taskForm.title.value.trim();
+    const description = elements.taskForm.description.value.trim();
+    const dueDate = elements.taskForm.dueDate.value;
+    const priority = elements.taskForm.priority.value;
+    const status = elements.taskForm.status.value;
+
+    if (!courseId) {
+        errors.courseId = "Select a course.";
+    }
+
+    if (!title) {
+        errors.title = "Task title is required.";
+    } else if (title.length > 160) {
+        errors.title = "Task title must be 160 characters or fewer.";
+    }
+
+    if (description.length > 2000) {
+        errors.description = "Description must be 2000 characters or fewer.";
+    }
+
+    if (!dueDate) {
+        errors.dueDate = "Due date is required.";
+    } else if (dueDate < getToday()) {
+        errors.dueDate = "Due date must be today or later.";
+    }
+
+    if (!priority) {
+        errors.priority = "Priority is required.";
+    }
+
+    if (!status) {
+        errors.status = "Status is required.";
+    }
+
+    return errors;
+}
+
+function validateGradeForm() {
+    const errors = {};
+    const courseId = elements.gradeForm.courseId.value;
+    const assignmentName = elements.gradeForm.assignmentName.value.trim();
+    const scoreRaw = elements.gradeForm.score.value;
+    const maxScoreRaw = elements.gradeForm.maxScore.value;
+    const weightRaw = elements.gradeForm.weight.value;
+
+    const score = Number(scoreRaw);
+    const maxScore = Number(maxScoreRaw);
+    const weight = Number(weightRaw);
+
+    if (!courseId) {
+        errors.courseId = "Select a course.";
+    }
+
+    if (!assignmentName) {
+        errors.assignmentName = "Assignment name is required.";
+    } else if (assignmentName.length > 160) {
+        errors.assignmentName = "Assignment name must be 160 characters or fewer.";
+    }
+
+    if (scoreRaw === "") {
+        errors.score = "Score is required.";
+    } else if (Number.isNaN(score) || score < 0) {
+        errors.score = "Score must be zero or greater.";
+    }
+
+    if (maxScoreRaw === "") {
+        errors.maxScore = "Max score is required.";
+    } else if (Number.isNaN(maxScore) || maxScore <= 0) {
+        errors.maxScore = "Max score must be greater than zero.";
+    }
+
+    if (weightRaw === "") {
+        errors.weight = "Weight is required.";
+    } else if (Number.isNaN(weight) || weight < 0 || weight > 100) {
+        errors.weight = "Weight must be between 0 and 100.";
+    }
+
+    if (scoreRaw !== "" && maxScoreRaw !== "" && !Number.isNaN(score) && !Number.isNaN(maxScore) && score > maxScore) {
+        errors.score = "Score must be less than or equal to max score.";
+    }
+
+    return errors;
+}
+
+function applyApiFieldErrors(form, fieldErrors = {}) {
+    if (!fieldErrors || typeof fieldErrors !== "object") {
+        return;
+    }
+
+    Object.entries(fieldErrors).forEach(([fieldName, message]) => {
+        if (form.elements.namedItem(fieldName)) {
+            setFieldError(form, fieldName, message);
+        }
+    });
+}
+
+function buildFormErrorMessage(error) {
+    const hasFieldErrors = Boolean(error?.fieldErrors && Object.keys(error.fieldErrors).length);
+    if (hasFieldErrors) {
+        return FORM_VALIDATION_SUMMARY;
+    }
+
+    return error?.message || DEFAULT_API_ERROR_MESSAGE;
+}
+
+function setFieldError(form, fieldName, message) {
+    const field = form.elements.namedItem(fieldName);
+    if (!field) {
+        return;
+    }
+
+    const errorElement = form.querySelector(`.field-error[data-field-error='${fieldName}']`);
+    if (errorElement) {
+        errorElement.textContent = message;
+    }
+
+    field.classList.add("field-invalid");
+    field.setAttribute("aria-invalid", "true");
+}
+
+function clearFieldError(form, fieldName) {
+    const field = form.elements.namedItem(fieldName);
+    if (!field) {
+        return;
+    }
+
+    const errorElement = form.querySelector(`.field-error[data-field-error='${fieldName}']`);
+    if (errorElement) {
+        errorElement.textContent = "";
+    }
+
+    field.classList.remove("field-invalid");
+    field.removeAttribute("aria-invalid");
+}
+
+function clearFormErrors(form) {
+    if (!form) {
+        return;
+    }
+
+    const errorElements = form.querySelectorAll(".field-error");
+    errorElements.forEach((errorElement) => {
+        errorElement.textContent = "";
+    });
+
+    const invalidFields = form.querySelectorAll(".field-invalid");
+    invalidFields.forEach((field) => {
+        field.classList.remove("field-invalid");
+        field.removeAttribute("aria-invalid");
+    });
+}
+
+function isValidEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function formatDate(value) {

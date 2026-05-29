@@ -36,6 +36,21 @@ textarea {
     font: inherit;
 }
 
+input.field-invalid,
+select.field-invalid,
+textarea.field-invalid {
+    border-color: rgba(220, 38, 38, 0.75);
+    background: #fff7f7;
+}
+
+.field-error {
+    min-height: 16px;
+    margin: -2px 0 0;
+    color: var(--danger);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
 button {
     cursor: pointer;
 }
@@ -336,15 +351,17 @@ button:focus-visible {
     background: var(--accent-strong);
 }
 
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 .secondary-button {
     border: 1px solid rgba(15, 159, 110, 0.35);
     background: rgba(15, 159, 110, 0.1);
     color: #087b55;
-}
-
-.secondary-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
 }
 
 .danger-button {
